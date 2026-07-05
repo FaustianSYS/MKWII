@@ -11,6 +11,8 @@ Two independent domains coupled via ROS 2 topics:
 | **Simulation** | `libflightsim_engagement`, `libflightsim_fdm` | Truth physics, scenario, guidance |
 | **Computer Vision** | `libflightsim_vision` | Seeker image processing, track output |
 
+See [docs/PHASE_PLAN.md](docs/PHASE_PLAN.md) for the full roadmap (simulation, CV, UE5, Isaac tracks).
+
 See [docs/isaac/dataset_sidecar.md](docs/isaac/dataset_sidecar.md) for Isaac Sim Phase 0 integration.
 
 ## Quick start

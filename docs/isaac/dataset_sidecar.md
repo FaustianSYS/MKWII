@@ -114,4 +114,4 @@ FlightSim truth trajectories stay deterministic; randomization applies only to r
 - Concurrent UE5 operator view (run separately if needed)
 - Isaac physics integration (actors are kinematic)
 
-See Phase 1+ docs for live Isaac seeker and namespaced co-simulation with UE5.
+See [Phase 1+ in the phase plan](../PHASE_PLAN.md#phase-1--live-isaac-seeker--planned) for live Isaac seeker and namespaced co-simulation with UE5.
