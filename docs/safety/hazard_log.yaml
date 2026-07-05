@@ -1,0 +1,32 @@
+hazards:
+  - id: HAZ-001
+    title: Incorrect attitude propagation
+    description: Quaternion integration error causes wrong orientation and force direction
+    severity: I
+    probability: D
+    mitigation: LLR-CORE-013, LLR-FDM-005, unit tests
+    status: open
+
+  - id: HAZ-002
+    title: Runaway integrator divergence
+    description: Numerical instability causes unbounded velocity or angular rates
+    severity: I
+    probability: E
+    mitigation: LLR-SAF-006, LLR-SAF-007, state limits, safe mode
+    status: open
+
+  - id: HAZ-003
+    title: Invalid control input
+    description: Out-of-envelope surface command causes non-physical maneuver
+    severity: II
+    probability: D
+    mitigation: LLR-SAF-004, LLR-SAF-005, input guards
+    status: open
+
+  - id: HAZ-004
+    title: Missed simulation step (deadlock)
+    description: Scheduler fails to advance, breaking real-time determinism
+    severity: II
+    probability: E
+    mitigation: LLR-SIM-004, watchdog step counter
+    status: open

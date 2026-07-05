@@ -1,0 +1,8 @@
+Checks: '-*'
+WarningsAsErrors: '*'
+HeaderFilterRegex: 'include/flightsim/.*'
+CheckOptions:
+  - key: readability-magic-numbers.IgnoredIntegerValues
+    value: '0;1;2;3;4'
+  - key: cppcoreguidelines-avoid-magic-numbers.IgnoredIntegerValues
+    value: '0;1;2;3;4'

@@ -1,0 +1,3 @@
+add_subdirectory(fdm_runner)
+add_subdirectory(engagement_runner)
+add_subdirectory(air_defense_runner)

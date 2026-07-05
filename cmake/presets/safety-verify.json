@@ -1,0 +1,37 @@
+{
+    "version": 6,
+    "cmakeMinimumRequired": {
+        "major": 3,
+        "minor": 24,
+        "patch": 0
+    },
+    "configurePresets": [
+        {
+            "name": "safety-verify",
+            "displayName": "Safety Verification",
+            "description": "Verification build with coverage instrumentation",
+            "binaryDir": "${sourceDir}/build/safety-verify",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+                "FLIGHTSIM_SAFETY_BUILD": "ON",
+                "FLIGHTSIM_ENABLE_COVERAGE": "ON",
+                "BUILD_TESTING": "ON"
+            }
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "safety-verify",
+            "configurePreset": "safety-verify"
+        }
+    ],
+    "testPresets": [
+        {
+            "name": "safety-verify",
+            "configurePreset": "safety-verify",
+            "output": {
+                "outputOnFailure": true
+            }
+        }
+    ]
+}

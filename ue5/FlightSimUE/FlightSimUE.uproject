@@ -1,0 +1,23 @@
+{
+    "FileVersion": 3,
+    "EngineAssociation": "",
+    "Category": "Simulation",
+    "Description": "FlightSim air-defense co-simulation environment with ROS 2 bridge",
+    "Modules": [
+        {
+            "Name": "FlightSimUE",
+            "Type": "Runtime",
+            "LoadingPhase": "Default"
+        }
+    ],
+    "Plugins": [
+        {
+            "Name": "FlightSimROS2",
+            "Enabled": true
+        },
+        {
+            "Name": "ProceduralMeshComponent",
+            "Enabled": true
+        }
+    ]
+}

@@ -1,0 +1,25 @@
+safety_requirements:
+  - id: SSR-001
+    text: The FDM shall produce physically consistent state propagation for all nominal inputs.
+    hazards: [HAZ-001, HLR-FDM-002]
+    hlrs: [HLR-FDM-001, HLR-FDM-002, HLR-SIM-001]
+
+  - id: SSR-002
+    text: The FDM shall use bounded atmospheric and force models without runtime file I/O in the RT loop.
+    hazards: [HAZ-001]
+    hlrs: [HLR-CORE-002, HLR-FDM-003]
+
+  - id: SSR-003
+    text: The system shall detect invalid state and transition to a defined safe mode.
+    hazards: [HAZ-002, HAZ-004]
+    hlrs: [HLR-SAF-001, HLR-SAF-002, HLR-SIM-002]
+
+  - id: SSR-004
+    text: On critical fault, the system shall hold the last valid state and latch the fault.
+    hazards: [HAZ-002]
+    hlrs: [HLR-SAF-002]
+
+  - id: SSR-005
+    text: Control inputs shall be bounded before use in force calculations.
+    hazards: [HAZ-003]
+    hlrs: [HLR-SAF-003]

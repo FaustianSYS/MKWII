@@ -1,0 +1,48 @@
+name: Safety CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  safety-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build cppcheck lcov
+
+      - name: Configure safety-verify preset
+        run: cmake --preset safety-verify
+
+      - name: Build
+        run: cmake --build build/safety-verify
+
+      - name: Run tests
+        run: ctest --preset safety-verify --output-on-failure
+
+      - name: Generate RTM
+        run: |
+          python3 tools/trace_gen/trace_gen.py \
+            --source-dir . \
+            --output build/safety-verify/traceability/RTM.csv
+
+      - name: Static analysis
+        run: |
+          python3 tools/static_analysis/run_static_analysis.py \
+            --source-dir . \
+            --build-dir build/safety-verify
+        continue-on-error: true
+
+      - name: Coverage report
+        run: cmake --build build/safety-verify --target coverage || true
+
+      - name: Upload RTM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: traceability-matrix
+          path: build/safety-verify/traceability/RTM.csv

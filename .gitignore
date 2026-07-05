@@ -1,0 +1,25 @@
+build/
+install/
+.cache/
+compile_commands.json
+coverage.info
+coverage.filtered.info
+coverage_html/
+*.gcno
+*.gcda
+*.gcov
+
+ros2/build/
+ros2/install/
+ros2/log/
+
+datasets/
+log/
+__pycache__/
+*.pyc
+
+# UE5 generated artifacts (source + plugin only in repo)
+ue5/**/Binaries/
+ue5/**/Intermediate/
+ue5/**/Saved/
+ue5/**/DerivedDataCache/

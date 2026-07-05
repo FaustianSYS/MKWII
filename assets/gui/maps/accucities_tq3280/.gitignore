@@ -1,0 +1,5 @@
+# Large AccuCities raw downloads (re-fetch with scripts/fetch_london_map_accucities.sh)
+raw/london_obj.zip
+raw/london_fbx.zip
+raw/OBJ/
+raw/*.FBX

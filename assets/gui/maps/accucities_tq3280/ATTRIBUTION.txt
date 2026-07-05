@@ -1,0 +1,9 @@
+AccuCities TQ3280 — Free 3D London Sample
+https://www.accucities.com/product/tq3280-free-3d-london-samples/
+
+License: Creative Commons Attribution-ShareAlike 4.0 International (CC BY-SA 4.0)
+https://creativecommons.org/licenses/by-sa/4.0/
+
+Processed Level 2 OBJ tile (No Logo) simplified for FlightSim tactical GUI.
+
+Attribution: "3D London map sample TQ3280 by AccuCities, CC BY-SA 4.0"

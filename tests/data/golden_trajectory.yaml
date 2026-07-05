@@ -1,0 +1,12 @@
+# Golden reference trajectory data for integration verification.
+# Format: step, altitude_m, speed_mps
+# Populated by verification runs; used for regression comparison.
+
+reference:
+  scenario: level_flight_throttle_065
+  dt_sec: 0.01
+  steps: 500
+  expected:
+    altitude_m: 1000.0
+    altitude_tolerance_m: 300.0
+    max_safe_mode: false

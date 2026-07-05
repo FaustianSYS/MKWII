@@ -1,0 +1,9 @@
+Generic interceptor missile mesh
+
+Original: "Missile" by Jarlan Perez
+Source: Google Poly (archived via Icosa Gallery), asset ID 1Xid2Qhqn2s
+License: Creative Commons Attribution 3.0 (CC BY 3.0)
+https://creativecommons.org/licenses/by/3.0/
+
+Downloaded via https://api.icosa.gallery/v1/assets/1Xid2Qhqn2s
+Prepared by scripts/fetch_generic_missile_model.sh for FlightSim tactical GUI / UE5.

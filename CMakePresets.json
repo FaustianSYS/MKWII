@@ -1,0 +1,66 @@
+{
+    "version": 6,
+    "cmakeMinimumRequired": {
+        "major": 3,
+        "minor": 24,
+        "patch": 0
+    },
+    "configurePresets": [
+        {
+            "name": "debug",
+            "displayName": "Debug (development)",
+            "description": "Symbols, tests, and fast iteration under build/debug",
+            "binaryDir": "${sourceDir}/build/debug",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "FLIGHTSIM_BUILD_PROFILE": "debug",
+                "FLIGHTSIM_SAFETY_BUILD": "ON",
+                "FLIGHTSIM_ENABLE_COVERAGE": "OFF",
+                "BUILD_TESTING": "ON"
+            }
+        },
+        {
+            "name": "flight",
+            "displayName": "Flight (release runtime)",
+            "description": "Optimized executables for sim runs under build/flight",
+            "binaryDir": "${sourceDir}/build/flight",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "FLIGHTSIM_BUILD_PROFILE": "flight",
+                "FLIGHTSIM_SAFETY_BUILD": "ON",
+                "FLIGHTSIM_ENABLE_COVERAGE": "OFF",
+                "BUILD_TESTING": "OFF"
+            }
+        },
+        {
+            "name": "safety-verify",
+            "displayName": "Safety Verification",
+            "description": "Coverage-instrumented verification build under build/safety-verify",
+            "binaryDir": "${sourceDir}/build/safety-verify",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+                "FLIGHTSIM_BUILD_PROFILE": "safety-verify",
+                "FLIGHTSIM_SAFETY_BUILD": "ON",
+                "FLIGHTSIM_ENABLE_COVERAGE": "ON",
+                "BUILD_TESTING": "ON"
+            }
+        }
+    ],
+    "buildPresets": [
+        { "name": "debug", "configurePreset": "debug" },
+        { "name": "flight", "configurePreset": "flight" },
+        { "name": "safety-verify", "configurePreset": "safety-verify" }
+    ],
+    "testPresets": [
+        {
+            "name": "debug",
+            "configurePreset": "debug",
+            "output": { "outputOnFailure": true }
+        },
+        {
+            "name": "safety-verify",
+            "configurePreset": "safety-verify",
+            "output": { "outputOnFailure": true }
+        }
+    ]
+}
