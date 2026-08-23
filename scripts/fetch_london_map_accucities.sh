@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Download AccuCities TQ3280 London sample and build GUI map cache.
+# Download AccuCities TQ3280 London sample and build UE5 map mesh cache.
 set -eo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -81,4 +81,4 @@ print("Extents (m):", mesh.extents)
 print("Winding consistent:", mesh.is_winding_consistent)
 PY
 
-echo "Done. GUI reads ${MAP_DIR}/london_tq3280_lod2.bin"
+echo "Done. UE5 loads ${MAP_DIR}/london_tq3280_lod2.obj"

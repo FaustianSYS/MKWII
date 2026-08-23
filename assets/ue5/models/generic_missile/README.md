@@ -1,13 +1,13 @@
-# Generic interceptor missile — GUI / UE5 model
+# Generic interceptor missile — UE5 model
 
-Low-poly missile mesh for the Qt tactical map and UE5 `SceneEntity` `id=missile`.
+Low-poly missile mesh for UE5 `SceneEntity` `id=missile`.
 
 ## Included mesh
 
 | File | Format | Notes |
 |------|--------|--------|
 | `source/generic_missile.glb` | glTF binary | **Recommended UE5 import** |
-| `source/generic_missile.obj` | Wavefront OBJ | Qt tactical GUI loader |
+| `source/generic_missile.obj` | Wavefront OBJ | Alternate mesh export |
 
 Meshes are scaled to **3.66 m** length (`MissileAttributes.length_m`), centered at the origin, nose **+X**.
 
@@ -33,4 +33,4 @@ Requires `python3`, `trimesh`, `numpy`.
 |-----------|--------|
 | `MissileAttributes.length_m = 3.66` | mesh length ~3.66 m |
 | Body +X forward | mesh +X nose |
-| `SceneEntity type=missile` | tactical GUI + UE5 actor |
+| `SceneEntity type=missile` | UE5 actor |

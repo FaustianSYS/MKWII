@@ -1,6 +1,6 @@
-# AccuCities TQ3280 — London tactical map (GUI)
+# AccuCities TQ3280 — London tactical map
 
-3D city backdrop for the Qt **Tactical Overview** map tab.
+3D city backdrop for the UE5 London map actor (`FlightSimLondonMapActor`).
 
 ## Source
 
@@ -12,11 +12,11 @@
 
 | File | Description |
 |------|-------------|
-| `london_tq3280_lod2.bin` | Simplified mesh cache for real-time Qt GL (~60k faces) |
-| `london_tq3280_lod2.obj` | Same mesh, Wavefront OBJ |
+| `london_tq3280_lod2.obj` | Simplified Wavefront OBJ (~60k faces) for UE5 |
+| `london_tq3280_lod2.bin` | Packed vertex/index cache (rebuild artifact) |
 | `raw/london_obj.zip` | Official AccuCities OBJ sample (not committed if large) |
 
-The GUI loads `london_tq3280_lod2.bin` automatically from this folder.
+UE5 loads `london_tq3280_lod2.obj` from this folder.
 
 ## Rebuild map cache
 

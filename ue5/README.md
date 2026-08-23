@@ -53,12 +53,16 @@ Attitudes are body→NED quaternions `[w, x, y, z]`.
 
 ## GUI
 
-With ROS tactical GUI:
+Web tactical display (`gui/`) via the ROS WebSocket bridge:
 
 ```bash
-ros2 launch flightsim_ros tactical_gui.launch.py
-# in another terminal, start the bridge stack:
+# terminal 1: sim / UE5 bridge stack
 ./scripts/launch_ue5_bridge.sh
+
+# terminal 2: ROS → browser bridge
+python3 tools/gui_bridge/gui_bridge.py
+
+# open gui/index.html in a browser (connects to ws://localhost:8765)
 ```
 
 The **UE5 BRIDGE** panel shows **UE5 BRIDGE LIVE** when camera frames are flowing.

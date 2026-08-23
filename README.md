@@ -13,6 +13,8 @@ Two independent domains coupled via ROS 2 topics:
 
 See [docs/PHASE_PLAN.md](docs/PHASE_PLAN.md) for the full roadmap (simulation, CV, UE5, Isaac tracks).
 
+See [docs/sim/missile_core.md](docs/sim/missile_core.md) for the missile 6-DOF C++ core (guidance, aero, EOM).
+
 See [docs/isaac/dataset_sidecar.md](docs/isaac/dataset_sidecar.md) for Isaac Sim Phase 0 integration.
 
 ## Quick start
