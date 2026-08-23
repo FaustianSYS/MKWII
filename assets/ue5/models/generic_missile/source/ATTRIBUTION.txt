@@ -6,4 +6,4 @@ License: Creative Commons Attribution 3.0 (CC BY 3.0)
 https://creativecommons.org/licenses/by/3.0/
 
 Downloaded via https://api.icosa.gallery/v1/assets/1Xid2Qhqn2s
-Prepared by scripts/fetch_generic_missile_model.sh for FlightSim tactical GUI / UE5.
+Prepared by scripts/fetch_generic_missile_model.sh for FlightSim UE5.

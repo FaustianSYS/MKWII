@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Download and prepare generic interceptor missile mesh for GUI / UE5.
+# Download and prepare generic interceptor missile mesh for UE5.
 set -eo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
