@@ -1,6 +1,7 @@
 #pragma once
 
 #include "flightsim/core/types.hpp"
+#include "flightsim/engagement/missile/missile_autopilot.hpp"
 #include "flightsim/engagement/missile/missile_control_allocation.hpp"
 #include "flightsim/engagement/missile/missile_eom.hpp"
 #include "flightsim/engagement/missile/missile_mass_properties.hpp"
@@ -58,6 +59,7 @@ struct MissileAttributes {
     MissileAero aero{};
     MissilePropulsionProperties propulsion{};
     ControlAllocationConfig allocation{};
+    MissileAutopilotConfig autopilot{};
 };
 
 struct MissileObject {
@@ -72,6 +74,7 @@ struct MissileObject {
     IndividualFins fins{};
     IndividualFins commanded_fins{};
     MissileMassProperties mass_properties{};
+    MissileAutopilotState autopilot{};
     MissileWrench wrench{};
 
     float thrust_n{0.0F};

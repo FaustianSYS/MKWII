@@ -3,6 +3,7 @@ add_library(flightsim_engagement STATIC
     src/missile/missile_eom.cpp
     src/missile/missile_control_allocation.cpp
     src/missile/missile_mass_properties.cpp
+    src/missile/missile_autopilot.cpp
     src/missile/missile.cpp
     src/missile/geometric_seeker_source.cpp
     src/target/target.cpp

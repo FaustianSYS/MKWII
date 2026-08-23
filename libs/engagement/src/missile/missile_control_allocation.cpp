@@ -1,5 +1,7 @@
 #include "flightsim/engagement/missile/missile_control_allocation.hpp"
 
+#include <cmath>
+
 namespace flightsim {
 namespace engagement {
 
@@ -43,12 +45,28 @@ void step_fin_servos(IndividualFins& fins, const IndividualFins& commanded, cons
 VirtualAxisCommand effective_virtual_axes_from_fins(const IndividualFins& fins,
                                                     const ControlAllocationConfig& config) noexcept {
     VirtualAxisCommand effective{};
+    float pitch_norm = 0.0F;
+    float yaw_norm = 0.0F;
+    float roll_norm = 0.0F;
 
     for (int i = 0; i < IndividualFins::kCount; ++i) {
         const float position = fins.fin[i].position_rad;
         effective.pitch_rad += config.pitch_weight[i] * position;
         effective.yaw_rad += config.yaw_weight[i] * position;
         effective.roll_rad += config.roll_weight[i] * position;
+        pitch_norm += std::fabs(config.pitch_weight[i]);
+        yaw_norm += std::fabs(config.yaw_weight[i]);
+        roll_norm += std::fabs(config.roll_weight[i]);
+    }
+
+    if (pitch_norm > 1.0e-6F) {
+        effective.pitch_rad /= pitch_norm;
+    }
+    if (yaw_norm > 1.0e-6F) {
+        effective.yaw_rad /= yaw_norm;
+    }
+    if (roll_norm > 1.0e-6F) {
+        effective.roll_rad /= roll_norm;
     }
 
     return effective;

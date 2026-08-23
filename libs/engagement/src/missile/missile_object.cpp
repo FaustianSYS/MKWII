@@ -62,6 +62,15 @@ MissileAttributes default_missile_attributes() noexcept {
     attrs.allocation.servo_limits.max_rate_rps = attrs.surface_limits.max_rate_rps;
     attrs.allocation.servo_limits.time_constant_sec = 0.03F;
 
+    attrs.autopilot.enabled = true;
+    attrs.autopilot.max_deflection_rad = attrs.surface_limits.max_deflection_rad;
+    attrs.autopilot.max_rate_rps = 4.0F;
+    attrs.autopilot.accel_to_rate_gain = 1.0F;
+    attrs.autopilot.rate_loop_blend = 0.35F;
+    attrs.autopilot.roll = AxisRateGains{0.08F, 0.02F, 0.002F, 0.01F, 0.05F};
+    attrs.autopilot.pitch = AxisRateGains{0.12F, 0.03F, 0.003F, 0.02F, 0.08F};
+    attrs.autopilot.yaw = AxisRateGains{0.12F, 0.03F, 0.003F, 0.02F, 0.08F};
+
     return attrs;
 }
 

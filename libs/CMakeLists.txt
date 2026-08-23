@@ -4,9 +4,9 @@ add_subdirectory(fdm)
 add_subdirectory(sim)
 add_subdirectory(engagement)
 
-if(JUMPINGSPIDER_BUILD_VISION)
+if(FLIGHTSIM_BUILD_VISION)
     add_subdirectory(vision)
 endif()
 
-jumpingspider_add_coverage_report()
-jumpingspider_add_traceability(jumpingspider_core)
+flightsim_add_coverage_report()
+flightsim_add_traceability(flightsim_core)

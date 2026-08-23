@@ -1,8 +1,11 @@
 #include "flightsim/engagement/missile/missile.hpp"
 
 #include "flightsim/core/constants.hpp"
-#include "flightsim/engagement/missile/missile_eom.hpp"
 #include "flightsim/engagement/missile/geometric_seeker_source.hpp"
+#include "flightsim/engagement/missile/missile_autopilot.hpp"
+#include "flightsim/engagement/missile/missile_control_allocation.hpp"
+#include "flightsim/engagement/missile/missile_eom.hpp"
+#include "flightsim/engagement/missile/missile_mass_properties.hpp"
 
 #include <cmath>
 
@@ -112,6 +115,14 @@ MissileWrench compute_wrench(const MissileObject& missile, const core::Vec3& gui
     return wrench;
 }
 
+ControlSurfaces surfaces_from_virtual(const VirtualAxisCommand& axes) noexcept {
+    ControlSurfaces surfaces{};
+    surfaces.fin_pitch_rad = axes.pitch_rad;
+    surfaces.fin_yaw_rad = axes.yaw_rad;
+    surfaces.fin_roll_rad = axes.roll_rad;
+    return surfaces;
+}
+
 }  // namespace
 
 void initialize_missile(MissileObject& missile, const MissileAttributes& attributes,
@@ -124,6 +135,8 @@ void initialize_missile(MissileObject& missile, const MissileAttributes& attribu
     missile.angular_rate_body_rps = core::Vec3{};
     missile.surfaces = ControlSurfaces{};
     missile.commanded_surfaces = ControlSurfaces{};
+    missile.fins = IndividualFins{};
+    missile.commanded_fins = IndividualFins{};
     missile.wrench = MissileWrench{};
     missile.thrust_n = attributes.max_thrust_n;
     missile.flight_time_sec = 0.0F;
@@ -132,6 +145,8 @@ void initialize_missile(MissileObject& missile, const MissileAttributes& attribu
     missile.seeker_locked = false;
     missile.seeker_los_angle_rad = 0.0F;
     missile.seeker_range_m = 0.0F;
+    initialize_mass_properties(missile);
+    reset_missile_autopilot(missile.autopilot);
 }
 
 core::Vec3 missile_nose_position(const MissileObject& missile) noexcept {
@@ -170,6 +185,7 @@ void step_missile(MissileObject& missile, const core::Vec3& target_position_ned_
     }
     apply_seeker_track_to_missile(missile, *active_track);
 
+    update_mass_properties_from_burn(missile, missile.flight_time_sec);
     const bool motor_burning = missile.flight_time_sec <= missile.attributes.burn_time_sec;
     missile.thrust_n = motor_burning ? missile.attributes.max_thrust_n : 0.0F;
 
@@ -203,7 +219,8 @@ void step_missile(MissileObject& missile, const core::Vec3& target_position_ned_
 
     if (motor_burning) {
         const float speed = missile.velocity_ned_mps.magnitude();
-        const float motor_accel = missile.thrust_n / missile.attributes.mass_kg;
+        const float mass = missile.attributes.mass_kg;
+        const float motor_accel = missile.thrust_n / mass;
         const float speed_deficit = core::clamp(missile.attributes.max_speed_mps - speed, 0.0F, 500.0F);
         const float boost_accel = core::clamp(motor_accel * 0.65F, 0.0F, speed_deficit * 4.0F);
         if (line_of_sight.magnitude() > 1.0e-6F) {
@@ -211,12 +228,47 @@ void step_missile(MissileObject& missile, const core::Vec3& target_position_ned_
         }
     }
 
+    const float mass = missile.attributes.mass_kg;
     const float max_commanded_accel =
-        missile.attributes.max_lateral_accel_mps2 + core::kGravity + (missile.thrust_n / missile.attributes.mass_kg);
+        missile.attributes.max_lateral_accel_mps2 + core::kGravity + (missile.thrust_n / mass);
     commanded_accel = clamp_magnitude(commanded_accel, max_commanded_accel);
 
-    missile.commanded_surfaces =
+    // PX4-style cascade:
+    //   outer FF: accel → virtual fins (legacy mapping)
+    //   inner: rate PID added as damper/tracker
+    //   4-fin allocation tracks virtual cmd; aero uses rate-limited virtual surfaces
+    const core::Vec3 accel_cmd_body = ned_to_body(missile.attitude, commanded_accel);
+    const core::Vec3 velocity_body = ned_to_body(missile.attitude, missile.velocity_ned_mps);
+
+    const ControlSurfaces accel_ff_surfaces =
         accel_to_surface_command(commanded_accel, missile.attitude, missile.attributes);
+    VirtualAxisCommand accel_ff{};
+    accel_ff.pitch_rad = accel_ff_surfaces.fin_pitch_rad;
+    accel_ff.yaw_rad = accel_ff_surfaces.fin_yaw_rad;
+    accel_ff.roll_rad = accel_ff_surfaces.fin_roll_rad;
+
+    const core::Vec3 rate_setpoint =
+        accel_command_to_rate_setpoint(accel_cmd_body, velocity_body, missile.attributes.autopilot);
+    VirtualAxisCommand rate_pid = update_missile_rate_autopilot(
+        missile.autopilot, missile.angular_rate_body_rps, rate_setpoint, dt, missile.attributes.autopilot);
+
+    const float w = missile.attributes.autopilot.enabled
+                        ? core::clamp(missile.attributes.autopilot.rate_loop_blend, 0.0F, 1.0F)
+                        : 0.0F;
+    VirtualAxisCommand virtual_cmd{};
+    virtual_cmd.pitch_rad = accel_ff.pitch_rad + (w * rate_pid.pitch_rad);
+    virtual_cmd.yaw_rad = accel_ff.yaw_rad + (w * rate_pid.yaw_rad);
+    virtual_cmd.roll_rad = accel_ff.roll_rad + (w * rate_pid.roll_rad);
+    const float max_def = missile.attributes.autopilot.max_deflection_rad;
+    virtual_cmd.pitch_rad = core::clamp(virtual_cmd.pitch_rad, -max_def, max_def);
+    virtual_cmd.yaw_rad = core::clamp(virtual_cmd.yaw_rad, -max_def, max_def);
+    virtual_cmd.roll_rad = core::clamp(virtual_cmd.roll_rad, -max_def, max_def);
+
+    missile.commanded_fins =
+        allocate_virtual_axes_to_fin_commands(virtual_cmd, missile.attributes.allocation);
+    step_fin_servos(missile.fins, missile.commanded_fins, missile.attributes.allocation.servo_limits, dt);
+
+    missile.commanded_surfaces = surfaces_from_virtual(virtual_cmd);
     apply_surface_rate_limit(missile.surfaces, missile.commanded_surfaces, missile.attributes.surface_limits, dt);
 
     const core::Vec3 attitude_reference =
@@ -224,6 +276,7 @@ void step_missile(MissileObject& missile, const core::Vec3& target_position_ned_
     const float alignment_gain_scale = motor_burning ? 3.0F : 1.0F;
     missile.wrench = compute_wrench(missile, commanded_accel, attitude_reference, alignment_gain_scale);
 
+    // Mass properties track burn for telemetry/CG; EOM uses attribute inertia until Phase 2 aero tables.
     integrate_missile_eom(missile.position_ned_m, missile.velocity_ned_mps, missile.attitude,
                           missile.angular_rate_body_rps, missile.wrench, missile.attributes.mass_kg,
                           missile.attributes.inertia, dt);

@@ -34,15 +34,18 @@ Reference: [Missile C++ core](sim/missile_core.md) · [Drone / target C++ core](
 
 **Verified:** air_defense intercept ~88 steps, miss distance ~4.8 m.
 
-### Phase 2 — Aerodynamics & autopilot 🔄 Next
+### Phase 2 — Aerodynamics & autopilot 🔄 In progress
 
 **Goal:** Replace linear aero with coefficient tables; add inner-loop autopilot.
 
 | Deliverable | Status | Notes |
 |-------------|--------|-------|
+| PX4-style rate PID inner loop | ✅ | `missile_autopilot.hpp/.cpp` — P/I/D/FF + anti-windup |
+| Accel → rate setpoint cascade | ✅ | Skid-to-turn map in `accel_command_to_rate_setpoint` |
+| Accel FF + rate-loop blend into fins | ✅ | Wired in `step_missile()` |
+| 4-fin allocation tracks virtual cmd | ✅ | Servo dynamics updated each tick |
 | Mach / α / β lookup tables (Cd, Cn, Cm) | ⬜ | Extend `missile.cpp` aero block |
 | Fin effectiveness vs Mach / α | ⬜ | Per-fin moment tables |
-| 3-axis rate damper autopilot | ⬜ | Between guidance and allocation |
 | Acceleration command limiting | ⬜ | Structural / actuator envelope |
 | Expanded unit tests (table interpolation, trim) | ⬜ | Golden aero cases |
 
@@ -165,7 +168,7 @@ Details: [docs/isaac/dataset_sidecar.md](isaac/dataset_sidecar.md)
 
 ## Current priority order
 
-1. **Phase 2 missile** — Mach/α aero tables + rate-damper autopilot
+1. **Phase 2 missile (remaining)** — Mach/α aero tables + accel limiting
 2. **Phase UE-2** — UMG HUD + camera director
 3. **Isaac Phase 1** — USD scene + live PNG export
 4. **Phase CV-2** — Track filtering + Isaac dataset training pipeline

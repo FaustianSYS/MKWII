@@ -1,10 +1,12 @@
 #include "minimal_test.hpp"
 
 #include "flightsim/engagement/missile/missile.hpp"
+#include "flightsim/engagement/missile/missile_autopilot.hpp"
 #include "flightsim/engagement/missile/missile_control_allocation.hpp"
 #include "flightsim/engagement/missile/missile_mass_properties.hpp"
 #include "flightsim/engagement/missile/missile_object.hpp"
 #include "flightsim/engagement/common/rng.hpp"
+#include "flightsim/engagement/scenario/air_defense_scenario.hpp"
 #include "flightsim/engagement/scenario/scenario.hpp"
 #include "flightsim/engagement/target/target.hpp"
 
@@ -14,6 +16,8 @@ int run_engagement_tests() {
     using flightsim::engagement::DeterministicRng;
     using flightsim::engagement::EngagementScenario;
     using flightsim::engagement::IndividualFins;
+    using flightsim::engagement::MissileAutopilotConfig;
+    using flightsim::engagement::MissileAutopilotState;
     using flightsim::engagement::MissileAttributes;
     using flightsim::engagement::MissileObject;
     using flightsim::engagement::ScenarioConfig;
@@ -21,15 +25,18 @@ int run_engagement_tests() {
     using flightsim::engagement::TargetRuntime;
     using flightsim::engagement::TargetState;
     using flightsim::engagement::VirtualAxisCommand;
+    using flightsim::engagement::accel_command_to_rate_setpoint;
     using flightsim::engagement::allocate_virtual_axes_to_fin_commands;
     using flightsim::engagement::default_missile_attributes;
     using flightsim::engagement::initialize_missile;
     using flightsim::engagement::initialize_target;
     using flightsim::engagement::range_to_target;
+    using flightsim::engagement::reset_missile_autopilot;
     using flightsim::engagement::step_fin_servos;
     using flightsim::engagement::step_missile;
     using flightsim::engagement::step_target;
     using flightsim::engagement::update_mass_properties_from_burn;
+    using flightsim::engagement::update_missile_rate_autopilot;
 
     {
         DeterministicRng rng{99U};
@@ -87,6 +94,36 @@ int run_engagement_tests() {
         REQUIRE_APPROX(missile.mass_properties.mass_kg, attrs.propulsion.dry_mass_kg, 0.01F);
         REQUIRE_APPROX(missile.mass_properties.cg_body_m.x, attrs.propulsion.cg_dry_body_m.x, 0.01F);
         REQUIRE(missile.mass_properties.inertia.iyy_kgm2 < attrs.propulsion.inertia_full.iyy_kgm2);
+    }
+
+    {
+        MissileAutopilotConfig config{};
+        config.enabled = true;
+        config.max_rate_rps = 5.0F;
+        config.accel_to_rate_gain = 1.0F;
+        config.min_speed_mps = 20.0F;
+        config.rate_loop_blend = 0.35F;
+        config.max_deflection_rad = 0.35F;
+        config.pitch = {0.12F, 0.03F, 0.0F, 0.02F, 0.08F};
+        config.yaw = {0.12F, 0.03F, 0.0F, 0.02F, 0.08F};
+        config.roll = {0.08F, 0.02F, 0.0F, 0.01F, 0.05F};
+
+        const Vec3 rate_sp =
+            accel_command_to_rate_setpoint(Vec3{0.0F, 40.0F, -20.0F}, Vec3{200.0F, 0.0F, 0.0F}, config);
+        REQUIRE(rate_sp.y > 0.0F);
+        REQUIRE(rate_sp.z > 0.0F);
+        REQUIRE(std::fabs(rate_sp.x) < 1.0e-5F);
+
+        MissileAutopilotState state{};
+        reset_missile_autopilot(state);
+        VirtualAxisCommand cmd{};
+        for (int i = 0; i < 50; ++i) {
+            cmd = update_missile_rate_autopilot(state, Vec3{}, rate_sp, 0.01F, config);
+        }
+        REQUIRE(std::fabs(cmd.pitch_rad) > 0.0F || std::fabs(cmd.yaw_rad) > 0.0F);
+        REQUIRE(std::fabs(cmd.pitch_rad) <= config.max_deflection_rad + 0.001F);
+        REQUIRE(std::fabs(cmd.yaw_rad) <= config.max_deflection_rad + 0.001F);
+        REQUIRE(std::fabs(state.rate_integral.y) <= config.pitch.lim_int + 0.001F);
     }
 
     {
@@ -159,6 +196,17 @@ int run_engagement_tests() {
     }
 
     {
+        ScenarioConfig config = flightsim::engagement::default_air_defense_config();
+        EngagementScenario scenario(config);
+        scenario.initialize();
+        scenario.run(35000U);
+
+        REQUIRE(scenario.state().intercept);
+        REQUIRE(scenario.state().miss_distance_m <= config.missile.kill_radius_m);
+    }
+
+    {
+        // Longer outbound engagement exercises rate-loop damping over burn + coast.
         ScenarioConfig config{};
         config.dt_sec = 0.01F;
         config.missile = default_missile_attributes();
@@ -171,8 +219,8 @@ int run_engagement_tests() {
         config.missile_launch_speed_mps = 80.0F;
 
         EngagementScenario scenario(config);
-    scenario.initialize();
-    scenario.run(35000U);
+        scenario.initialize();
+        scenario.run(35000U);
 
         REQUIRE(scenario.state().intercept);
         REQUIRE(scenario.state().miss_distance_m <= config.missile.kill_radius_m);
