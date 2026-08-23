@@ -17,6 +17,8 @@ Interface topics only — no cross-domain C++ linkage.
 
 ## Simulation — Missile 6-DOF
 
+Reference: [Missile C++ core](sim/missile_core.md).
+
 ### Phase 1 — Control allocation & mass properties ✅ Done
 
 **Goal:** Replace virtual fin shortcut with physically structured actuator and propellant pipeline.
