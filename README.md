@@ -36,6 +36,9 @@ ros2 launch flightsim_ros air_defense_vision.launch.py
 
 # Isaac dataset sidecar (sim only, no vision loop)
 ./scripts/launch_dataset_sidecar.sh
+
+# Qt tactical GUI (local viz / testing, no UE5 required)
+./scripts/launch_qt_gui.sh
 ```
 
 ## UE5 / Epic GitHub

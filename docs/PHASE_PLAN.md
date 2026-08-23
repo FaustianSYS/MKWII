@@ -110,6 +110,7 @@ Reference: [Missile C++ core](sim/missile_core.md) · [Drone / target C++ core](
 
 | Deliverable | Status | Notes |
 |-------------|--------|-------|
+| Qt 3D tactical test GUI (OpenGL tracks + metrics) | ✅ | `ros2/flightsim_qt_gui/` · `./scripts/launch_qt_gui.sh` |
 | UMG HUD overlay (range, lock, fins, thrust) | ⬜ | Bind to `FFlightSimTelemetry` |
 | Camera director (tactical / missile / target / free) | ⬜ | Planned in architecture canvas |
 | Seeker picture-in-picture on HUD | ⬜ | Subscribes seeker image topic |
