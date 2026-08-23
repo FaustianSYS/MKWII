@@ -136,17 +136,17 @@ Early exits: inactive, already hit, or `dt ≤ 0`.
 
 ### Guidance (proportional navigation)
 
-With LOS unit \(\hat{\lambda}\) and LOS rate \(\dot{\lambda}\) (from track or relative kinematics):
+With LOS unit `λ̂` and LOS rate `λ̇` (from track or relative kinematics):
 
-\[
-\mathbf{a}_\text{cmd} = N \cdot V_c \cdot (\dot{\lambda} \times \hat{v})
-\]
+```text
+a_cmd = N · V_c · (λ̇ × v̂)
+```
 
-- \(N\) = `navigation_gain` when seeker locked, else `0.25 × navigation_gain`
-- \(V_c\) = closing speed along LOS (clamped ≥ 0)
+- `N` = `navigation_gain` when seeker locked, else `0.25 × navigation_gain`
+- `V_c` = closing speed along LOS (clamped ≥ 0)
 - Lateral magnitude capped by `max_lateral_accel_mps2`
-- Gravity compensation: \(a_z \mathrel{-}= g\)
-- During burn, an axial boost term along LOS is added (portion of \(T/m\))
+- Gravity compensation: `a_z -= g`
+- During burn, an axial boost term along LOS is added (portion of `T/m`)
 
 ### Control surfaces (active path)
 
@@ -179,11 +179,16 @@ Servos are first-order with rate and deflection limits (`time_constant_sec ≈ 0
 
 [`integrate_missile_eom`](../../libs/engagement/src/missile/missile_eom.cpp):
 
-1. Rotate body force to NED; add weight \(mg\) on +Down
-2. \(\mathbf{a} = \mathbf{F}/m\)
-3. Angular: \(\mathbf{I}\dot{\boldsymbol{\omega}} = \mathbf{M} - \boldsymbol{\omega}\times(\mathbf{I}\boldsymbol{\omega})\) with diagonal `Ixx, Iyy, Izz`
+1. Rotate body force to NED; add weight `m·g` on +Down
+2. Translational: `a = F / m`
+3. Angular (diagonal inertia `Ixx, Iyy, Izz`):
+
+```text
+I · ω̇ = M − ω × (I · ω)
+```
+
 4. Quaternion kinematics from body rates
-5. **Semi-implicit Euler:** update \(v\), then \(p\) with new \(v\); update \(\omega\) and \(q\); renormalize quaternion
+5. **Semi-implicit Euler:** update `v`, then `p` with new `v`; update `ω` and `q`; renormalize quaternion
 
 Helpers: `body_x_ned`, `ned_to_body`, `quaternion_from_body_x_ned` (launch attitude from velocity).
 
@@ -193,8 +198,8 @@ Body force / moment includes:
 
 - Axial thrust while burning
 - Guidance force (commanded accel × mass, rotated to body)
-- Parasite drag \(\propto q_\infty S C_D\) along body −X
-- Static aero moments from \(\alpha,\beta\)
+- Parasite drag `∝ q∞ · S · Cd` along body −X
+- Static aero moments from `α`, `β`
 - Velocity / LOS alignment moments (stronger during boost)
 - Fin deflection moments + rate damping
 

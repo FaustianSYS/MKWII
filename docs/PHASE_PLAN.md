@@ -17,7 +17,7 @@ Interface topics only — no cross-domain C++ linkage.
 
 ## Simulation — Missile 6-DOF
 
-Reference: [Missile C++ core](sim/missile_core.md).
+Reference: [Missile C++ core](sim/missile_core.md) · [Drone / target C++ core](sim/drone_core.md).
 
 ### Phase 1 — Control allocation & mass properties ✅ Done
 
