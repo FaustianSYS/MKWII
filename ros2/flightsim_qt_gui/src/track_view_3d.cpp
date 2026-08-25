@@ -1,19 +1,45 @@
 #include "track_view_3d.hpp"
 
+#include <QLineF>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QPen>
 #include <QVector4D>
 #include <QWheelEvent>
 #include <QtMath>
 #include <algorithm>
+#include <chrono>
 #include <cmath>
+
+namespace {
+
+std::uint32_t lcg_next(std::uint32_t& state) {
+  state = state * 1664525U + 1013904223U;
+  return state;
+}
+
+float lcg_uniform(std::uint32_t& state, float lo, float hi) {
+  const float u = static_cast<float>(lcg_next(state) & 0x00FFFFFFU) / static_cast<float>(0x00FFFFFFU);
+  return lo + (hi - lo) * u;
+}
+
+}  // namespace
 
 TrackView3D::TrackView3D(QWidget* parent) : QOpenGLWidget(parent) {
   setMinimumSize(640, 480);
   setFocusPolicy(Qt::StrongFocus);
+  const auto ticks = std::chrono::steady_clock::now().time_since_epoch().count();
+  regenerateTerrain(static_cast<std::uint32_t>(ticks) ^ 0xA5A5A5A5U);
 }
 
 void TrackView3D::setSnapshot(const TelemetrySnapshot& snap) {
+  // New engagement run → reshuffle terrain curvature.
+  if (snap.has_engagement && snap.step_count < last_step_count_) {
+    randomizeGround();
+  }
+  if (snap.has_engagement) {
+    last_step_count_ = snap.step_count;
+  }
   snap_ = snap;
   if (follow_missile_ && snap_.has_missile) {
     look_at_ = nedToDisplay(snap_.missile_pos_ned);
@@ -32,6 +58,48 @@ void TrackView3D::resetCamera() {
 
 void TrackView3D::followMissile(bool enabled) {
   follow_missile_ = enabled;
+}
+
+void TrackView3D::randomizeGround() {
+  const auto ticks = std::chrono::steady_clock::now().time_since_epoch().count();
+  regenerateTerrain(static_cast<std::uint32_t>(ticks) ^ (terrain_seed_ * 2654435761U));
+  update();
+}
+
+void TrackView3D::regenerateTerrain(std::uint32_t seed) {
+  if (seed == 0U) {
+    seed = 1U;
+  }
+  terrain_seed_ = seed;
+  std::uint32_t rng = seed;
+  terrain_base_up_m_ = lcg_uniform(rng, -8.0F, 12.0F);
+
+  // Layered sines → smooth randomized curved surface over the 1 km square.
+  for (auto& wave : terrain_waves_) {
+    wave.amp_m = lcg_uniform(rng, 4.0F, 28.0F);
+    // Wavelength roughly 180–700 m across the play area.
+    const float waves_n = lcg_uniform(rng, 1.2F, 5.5F);
+    const float waves_e = lcg_uniform(rng, 1.2F, 5.5F);
+    constexpr float kPi = 3.14159265F;
+    wave.freq_n = (waves_n * 2.0F * kPi) / (2.0F * kGroundHalf_m);
+    wave.freq_e = (waves_e * 2.0F * kPi) / (2.0F * kGroundHalf_m);
+    wave.phase = lcg_uniform(rng, 0.0F, 2.0F * kPi);
+    if (lcg_uniform(rng, 0.0F, 1.0F) < 0.35F) {
+      wave.amp_m *= -1.0F;  // allow valleys
+    }
+  }
+}
+
+float TrackView3D::sampleGroundUp_m(float north_m, float east_m) const {
+  float h = terrain_base_up_m_;
+  for (const auto& wave : terrain_waves_) {
+    h += wave.amp_m * std::sin(wave.freq_n * north_m + wave.freq_e * east_m + wave.phase);
+  }
+  // Soft falloff near edges so the border stays readable.
+  const float nx = std::clamp(north_m / kGroundHalf_m, -1.0F, 1.0F);
+  const float ey = std::clamp(east_m / kGroundHalf_m, -1.0F, 1.0F);
+  const float edge = (1.0F - nx * nx) * (1.0F - ey * ey);
+  return h * (0.35F + 0.65F * edge);
 }
 
 QVector3D TrackView3D::nedToDisplay(const QVector3D& ned) const {
@@ -105,6 +173,7 @@ void TrackView3D::paintGL() {
   glMatrixMode(GL_MODELVIEW);
   glLoadIdentity();
 
+  drawGroundPlane();
   drawGrid();
   drawAxes();
   drawTrail(snap_.target_trail, 0.95F, 0.55F, 0.20F, 2.0F);
@@ -149,44 +218,173 @@ void TrackView3D::drawCoordOverlays(const QMatrix4x4& mvp) {
   font.setPointSize(10);
   painter.setFont(font);
 
-  auto drawLabel = [&](const QVector3D& ned, const QString& name, const QColor& color) {
-    const QPointF screen = projectToScreen(nedToDisplay(ned), mvp);
-    if (screen.x() < 0.0) {
+  auto nearestCorner = [](const QRectF& box, const QPointF& target) -> QPointF {
+    const QPointF corners[4] = {
+        box.topLeft(),
+        box.topRight(),
+        box.bottomLeft(),
+        box.bottomRight(),
+    };
+    QPointF best = corners[0];
+    qreal best_d = QLineF(best, target).length();
+    for (int i = 1; i < 4; ++i) {
+      const qreal d = QLineF(corners[i], target).length();
+      if (d < best_d) {
+        best_d = d;
+        best = corners[i];
+      }
+    }
+    return best;
+  };
+
+  auto drawLabel = [&](const QVector3D& ned, const QString& name, const QColor& color, const QPointF& offset) {
+    const QPointF anchor = projectToScreen(nedToDisplay(ned), mvp);
+    if (anchor.x() < 0.0) {
       return;
     }
+
     const QString text = QStringLiteral("%1\nN %2  E %3  D %4")
                              .arg(name)
                              .arg(ned.x(), 0, 'f', 1)
                              .arg(ned.y(), 0, 'f', 1)
                              .arg(ned.z(), 0, 'f', 1);
-    const QRectF box(screen.x() + 12.0, screen.y() - 34.0, 210.0, 40.0);
-    painter.fillRect(box.adjusted(-6, -4, 6, 4), QColor(8, 14, 22, 180));
+
+    constexpr qreal box_w = 210.0;
+    constexpr qreal box_h = 40.0;
+    QRectF box(anchor.x() + offset.x(), anchor.y() + offset.y(), box_w, box_h);
+
+    // Keep the callout on-screen.
+    box.moveLeft(std::clamp(box.left(), 8.0, static_cast<qreal>(width()) - box_w - 8.0));
+    box.moveTop(std::clamp(box.top(), 8.0, static_cast<qreal>(height()) - box_h - 8.0));
+
+    const QRectF padded = box.adjusted(-6, -4, 6, 4);
+    const QPointF corner = nearestCorner(padded, anchor);
+
+    // Leader line: box corner → object
+    QPen leader(color, 1.4);
+    leader.setCosmetic(true);
+    painter.setPen(leader);
+    painter.drawLine(corner, anchor);
+
+    // Anchor tick on the object
+    painter.setBrush(color);
+    painter.setPen(Qt::NoPen);
+    painter.drawEllipse(anchor, 3.5, 3.5);
+
+    // Callout box
+    painter.setBrush(QColor(8, 14, 22, 200));
+    painter.setPen(QPen(color, 1.0));
+    painter.drawRoundedRect(padded, 4, 4);
     painter.setPen(color);
     painter.drawText(box, Qt::AlignLeft | Qt::AlignVCenter, text);
   };
 
+  // Offset boxes away from markers; different corners for missile vs target.
   if (snap_.has_missile) {
-    drawLabel(snap_.missile_pos_ned, QStringLiteral("MISSILE"), QColor(64, 220, 240));
+    drawLabel(snap_.missile_pos_ned, QStringLiteral("MISSILE"), QColor(64, 220, 240), QPointF(70.0, -78.0));
   }
   if (snap_.has_target) {
-    drawLabel(snap_.target_pos_ned, QStringLiteral("TARGET"), QColor(255, 160, 70));
+    drawLabel(snap_.target_pos_ned, QStringLiteral("TARGET"), QColor(255, 160, 70), QPointF(-250.0, 28.0));
   }
   painter.end();
 }
 
+void TrackView3D::drawGroundPlane() {
+  // Randomized curved 1 km × 1 km heightfield (display Z = Up).
+  constexpr float half = kGroundHalf_m;
+  constexpr int res = kTerrainRes;
+  const float step = (2.0F * half) / static_cast<float>(res);
+
+  glDisable(GL_CULL_FACE);
+  glBegin(GL_TRIANGLES);
+  for (int i = 0; i < res; ++i) {
+    for (int j = 0; j < res; ++j) {
+      const float n0 = -half + static_cast<float>(i) * step;
+      const float n1 = n0 + step;
+      const float e0 = -half + static_cast<float>(j) * step;
+      const float e1 = e0 + step;
+
+      const float z00 = sampleGroundUp_m(n0, e0);
+      const float z10 = sampleGroundUp_m(n1, e0);
+      const float z11 = sampleGroundUp_m(n1, e1);
+      const float z01 = sampleGroundUp_m(n0, e1);
+
+      auto shade = [](float z) {
+        const float t = std::clamp((z + 25.0F) / 60.0F, 0.0F, 1.0F);
+        return QVector3D(0.10F + 0.08F * t, 0.18F + 0.22F * t, 0.12F + 0.10F * t);
+      };
+
+      const QVector3D c00 = shade(z00);
+      const QVector3D c10 = shade(z10);
+      const QVector3D c11 = shade(z11);
+      const QVector3D c01 = shade(z01);
+
+      glColor4f(c00.x(), c00.y(), c00.z(), 0.94F);
+      glVertex3f(n0, e0, z00);
+      glColor4f(c10.x(), c10.y(), c10.z(), 0.94F);
+      glVertex3f(n1, e0, z10);
+      glColor4f(c11.x(), c11.y(), c11.z(), 0.94F);
+      glVertex3f(n1, e1, z11);
+
+      glColor4f(c00.x(), c00.y(), c00.z(), 0.94F);
+      glVertex3f(n0, e0, z00);
+      glColor4f(c11.x(), c11.y(), c11.z(), 0.94F);
+      glVertex3f(n1, e1, z11);
+      glColor4f(c01.x(), c01.y(), c01.z(), 0.94F);
+      glVertex3f(n0, e1, z01);
+    }
+  }
+  glEnd();
+
+  // Border outline following the curved edge
+  glLineWidth(2.0F);
+  glBegin(GL_LINE_LOOP);
+  glColor4f(0.40F, 0.62F, 0.45F, 1.0F);
+  const int edge = res;
+  for (int i = 0; i <= edge; ++i) {
+    const float n = -half + static_cast<float>(i) * step;
+    glVertex3f(n, -half, sampleGroundUp_m(n, -half) + 0.4F);
+  }
+  for (int j = 1; j <= edge; ++j) {
+    const float e = -half + static_cast<float>(j) * step;
+    glVertex3f(half, e, sampleGroundUp_m(half, e) + 0.4F);
+  }
+  for (int i = edge - 1; i >= 0; --i) {
+    const float n = -half + static_cast<float>(i) * step;
+    glVertex3f(n, half, sampleGroundUp_m(n, half) + 0.4F);
+  }
+  for (int j = edge - 1; j >= 1; --j) {
+    const float e = -half + static_cast<float>(j) * step;
+    glVertex3f(-half, e, sampleGroundUp_m(-half, e) + 0.4F);
+  }
+  glEnd();
+}
+
 void TrackView3D::drawGrid() {
+  // Contour-style grid draped on the curved ground
+  constexpr float half = kGroundHalf_m;
+  constexpr float step = 100.0F;
+  constexpr int samples = 40;
+  const float ds = (2.0F * half) / static_cast<float>(samples);
+
   glLineWidth(1.0F);
   glBegin(GL_LINES);
-  glColor4f(0.18F, 0.28F, 0.34F, 0.7F);
-  const float step = 200.0F;
-  const float extent = 4000.0F;
-  for (float x = -extent; x <= extent + 0.1F; x += step) {
-    glVertex3f(x, -extent, 0.0F);
-    glVertex3f(x, extent, 0.0F);
+  glColor4f(0.24F, 0.40F, 0.30F, 0.80F);
+  for (float x = -half; x <= half + 0.1F; x += step) {
+    for (int k = 0; k < samples; ++k) {
+      const float y0 = -half + static_cast<float>(k) * ds;
+      const float y1 = y0 + ds;
+      glVertex3f(x, y0, sampleGroundUp_m(x, y0) + 0.35F);
+      glVertex3f(x, y1, sampleGroundUp_m(x, y1) + 0.35F);
+    }
   }
-  for (float y = -extent; y <= extent + 0.1F; y += step) {
-    glVertex3f(-extent, y, 0.0F);
-    glVertex3f(extent, y, 0.0F);
+  for (float y = -half; y <= half + 0.1F; y += step) {
+    for (int k = 0; k < samples; ++k) {
+      const float x0 = -half + static_cast<float>(k) * ds;
+      const float x1 = x0 + ds;
+      glVertex3f(x0, y, sampleGroundUp_m(x0, y) + 0.35F);
+      glVertex3f(x1, y, sampleGroundUp_m(x1, y) + 0.35F);
+    }
   }
   glEnd();
 }

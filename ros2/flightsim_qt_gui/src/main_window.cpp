@@ -4,6 +4,9 @@
 #include <QFrame>
 #include <QGridLayout>
 #include <QHBoxLayout>
+#include <QScrollArea>
+#include <QSizePolicy>
+#include <QSplitter>
 #include <QVector3D>
 #include <QVBoxLayout>
 
@@ -53,17 +56,44 @@ MainWindow::MainWindow(TelemetryBridge* bridge, QWidget* parent)
       "  padding: 6px 12px;"
       "}"
       "QPushButton:hover { background: #2e4058; }"
-      "QCheckBox { spacing: 8px; }"));
+      "QPushButton:checked {"
+      "  background: #1f4d3a;"
+      "  border: 1px solid #3dd68c;"
+      "  color: #b8f5d4;"
+      "}"
+      "QCheckBox { spacing: 8px; }"
+      "QSplitter::handle:horizontal {"
+      "  background: #243247;"
+      "  width: 5px;"
+      "  margin: 0 2px;"
+      "  border-radius: 2px;"
+      "}"
+      "QSplitter::handle:horizontal:hover { background: #3a4d66; }"
+      "QScrollArea { border: none; background: transparent; }"));
 
   auto* root = new QWidget(this);
   setCentralWidget(root);
   auto* layout = new QHBoxLayout(root);
   layout->setContentsMargins(12, 12, 12, 12);
-  layout->setSpacing(12);
+  layout->setSpacing(0);
 
-  auto* left = new QFrame(root);
+  auto* splitter = new QSplitter(Qt::Horizontal, root);
+  splitter->setObjectName(QStringLiteral("mainSplitter"));
+  splitter->setChildrenCollapsible(false);
+  splitter->setHandleWidth(6);
+
+  auto* left_scroll = new QScrollArea(splitter);
+  left_scroll->setWidgetResizable(true);
+  left_scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+  left_scroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+  left_scroll->setFrameShape(QFrame::NoFrame);
+  left_scroll->setMinimumWidth(240);
+  left_scroll->setMaximumWidth(720);
+  left_scroll->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
+
+  auto* left = new QFrame(left_scroll);
   left->setObjectName(QStringLiteral("panel"));
-  left->setFixedWidth(380);
+  left->setMinimumWidth(220);
   auto* left_layout = new QVBoxLayout(left);
 
   auto* title = new QLabel(QStringLiteral("3D Track / Missile Test"), left);
@@ -71,7 +101,9 @@ MainWindow::MainWindow(TelemetryBridge* bridge, QWidget* parent)
   left_layout->addWidget(title);
 
   auto* hint = new QLabel(
-      QStringLiteral("LMB orbit · RMB pan · wheel zoom\nAxes: red=N green=E blue=Up"), left);
+      QStringLiteral("LMB orbit · RMB pan · wheel zoom\n"
+                     "Ground: randomized curved 1 km × 1 km · Axes: red=N green=E blue=Up"),
+      left);
   hint->setStyleSheet(QStringLiteral("color:#8aa0b8;font-size:11px;"));
   left_layout->addWidget(hint);
 
@@ -103,30 +135,78 @@ MainWindow::MainWindow(TelemetryBridge* bridge, QWidget* parent)
   follow_check_->setChecked(true);
   left_layout->addWidget(follow_check_);
 
+  continuous_btn_ = new QPushButton(QStringLiteral("Continuous run"), left);
+  continuous_btn_->setCheckable(true);
+  continuous_btn_->setToolTip(
+      QStringLiteral("When on, auto reset/initialize and rerun after each engagement completes"));
+  left_layout->addWidget(continuous_btn_);
+
+  continuous_timer_ = new QTimer(this);
+  continuous_timer_->setSingleShot(true);
+  continuous_timer_->setInterval(750);
+
   auto* btn_row = new QHBoxLayout();
+  auto* rerun_btn = new QPushButton(QStringLiteral("Initialize / Rerun"), left);
   auto* clear_btn = new QPushButton(QStringLiteral("Clear trails"), left);
   auto* reset_btn = new QPushButton(QStringLiteral("Reset camera"), left);
   auto* mark_btn = new QPushButton(QStringLiteral("Mark event"), left);
+  btn_row->addWidget(rerun_btn);
   btn_row->addWidget(clear_btn);
-  btn_row->addWidget(reset_btn);
-  btn_row->addWidget(mark_btn);
   left_layout->addLayout(btn_row);
+
+  auto* btn_row2 = new QHBoxLayout();
+  btn_row2->addWidget(reset_btn);
+  btn_row2->addWidget(mark_btn);
+  left_layout->addLayout(btn_row2);
 
   log_ = new QTextEdit(left);
   log_->setReadOnly(true);
   left_layout->addWidget(log_, 1);
+  left_scroll->setWidget(left);
 
-  view3d_ = new TrackView3D(root);
+  auto* center = new QWidget(splitter);
+  center->setMinimumWidth(400);
+  center->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+  auto* center_layout = new QGridLayout(center);
+  center_layout->setContentsMargins(0, 0, 0, 0);
+  center_layout->setSpacing(0);
 
-  layout->addWidget(left);
-  layout->addWidget(view3d_, 1);
+  view3d_ = new TrackView3D(center);
+  center_layout->addWidget(view3d_, 0, 0);
+
+  auto* pip_host = new QWidget(center);
+  pip_host->setAttribute(Qt::WA_TransparentForMouseEvents, false);
+  auto* pip_layout = new QVBoxLayout(pip_host);
+  pip_layout->setContentsMargins(0, 0, 0, 0);
+  pip_layout->setSpacing(8);
+  seeker_view_ = new CameraViewWidget(CameraViewWidget::Mode::Seeker, pip_host);
+  drone_view_ = new CameraViewWidget(CameraViewWidget::Mode::Drone, pip_host);
+  seeker_view_->setStyleSheet(QStringLiteral("background: transparent;"));
+  drone_view_->setStyleSheet(QStringLiteral("background: transparent;"));
+  pip_layout->addWidget(seeker_view_);
+  pip_layout->addWidget(drone_view_);
+  pip_layout->addStretch(1);
+  center_layout->addWidget(pip_host, 0, 0, Qt::AlignTop | Qt::AlignRight);
+  center_layout->setContentsMargins(0, 10, 10, 0);
+  pip_host->raise();
+
+  splitter->addWidget(left_scroll);
+  splitter->addWidget(center);
+  splitter->setStretchFactor(0, 0);
+  splitter->setStretchFactor(1, 1);
+  splitter->setSizes({380, 1060});
+
+  layout->addWidget(splitter);
 
   connect(bridge_, &TelemetryBridge::telemetryUpdated, this, &MainWindow::onTelemetryUpdated);
   connect(bridge_, &TelemetryBridge::engagementCompleted, this, &MainWindow::onEngagementCompleted);
   connect(clear_btn, &QPushButton::clicked, this, &MainWindow::onClearTrails);
   connect(reset_btn, &QPushButton::clicked, this, &MainWindow::onResetCamera);
   connect(mark_btn, &QPushButton::clicked, this, &MainWindow::onMarkEvent);
+  connect(rerun_btn, &QPushButton::clicked, this, &MainWindow::onRerun);
   connect(follow_check_, &QCheckBox::toggled, this, &MainWindow::onFollowToggled);
+  connect(continuous_btn_, &QPushButton::toggled, this, &MainWindow::onContinuousToggled);
+  connect(continuous_timer_, &QTimer::timeout, this, &MainWindow::onContinuousRestart);
 
   appendLog(QStringLiteral("Listening on /flightsim/* truth topics"));
 }
@@ -146,6 +226,8 @@ void MainWindow::appendLog(const QString& line) {
 void MainWindow::onTelemetryUpdated() {
   const TelemetrySnapshot snap = bridge_->snapshot();
   view3d_->setSnapshot(snap);
+  seeker_view_->setSnapshot(snap);
+  drone_view_->setSnapshot(snap);
 
   if (snap.has_engagement) {
     setMetricValue(m_range_, QStringLiteral("RANGE (m)"), fmt(snap.range_m));
@@ -183,6 +265,10 @@ void MainWindow::onEngagementCompleted(bool intercept, float miss_distance_m, qu
   appendLog(QStringLiteral("Engagement complete: %1  miss=%2 m  steps=%3")
                 .arg(intercept ? QStringLiteral("INTERCEPT") : QStringLiteral("MISS"),
                      fmt(miss_distance_m), QString::number(step_count)));
+  if (continuous_btn_->isChecked()) {
+    appendLog(QStringLiteral("Continuous run: restarting in 0.75 s…"));
+    continuous_timer_->start();
+  }
 }
 
 void MainWindow::onClearTrails() {
@@ -194,6 +280,39 @@ void MainWindow::onClearTrails() {
 void MainWindow::onResetCamera() {
   view3d_->resetCamera();
   appendLog(QStringLiteral("Camera reset"));
+}
+
+void MainWindow::triggerRerun(const QString& reason) {
+  bridge_->requestReinitialize();
+  view3d_->randomizeGround();
+  view3d_->setSnapshot(bridge_->snapshot());
+  appendLog(reason);
+}
+
+void MainWindow::onRerun() {
+  continuous_timer_->stop();
+  triggerRerun(QStringLiteral("Initialize / Rerun requested (new spawn + curved ground)"));
+}
+
+void MainWindow::onContinuousToggled(bool checked) {
+  if (!checked) {
+    continuous_timer_->stop();
+    appendLog(QStringLiteral("Continuous run OFF"));
+    return;
+  }
+  appendLog(QStringLiteral("Continuous run ON — will auto reset/initialize after each finish"));
+  const TelemetrySnapshot snap = bridge_->snapshot();
+  if (!snap.has_engagement || snap.complete) {
+    continuous_timer_->start();
+  }
+}
+
+void MainWindow::onContinuousRestart() {
+  if (!continuous_btn_->isChecked()) {
+    return;
+  }
+  ++continuous_run_count_;
+  triggerRerun(QStringLiteral("Continuous run #%1 — reset + initialize").arg(continuous_run_count_));
 }
 
 void MainWindow::onMarkEvent() {

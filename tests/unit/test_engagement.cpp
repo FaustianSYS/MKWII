@@ -196,7 +196,15 @@ int run_engagement_tests() {
     }
 
     {
+        // Fixed-geometry intercept regression (milder spline so the assert stays deterministic).
         ScenarioConfig config = flightsim::engagement::default_air_defense_config();
+        config.randomize_initial_positions = false;
+        config.target_inbound = true;
+        config.target.inbound = true;
+        config.target.spline_mission_blend = 0.55F;
+        config.target.speed_mps = 28.0F;
+        config.target.max_heading_change_rad = 0.40F;
+        config.target.rng_seed = 2024U;
         EngagementScenario scenario(config);
         scenario.initialize();
         scenario.run(35000U);

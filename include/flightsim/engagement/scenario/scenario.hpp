@@ -24,6 +24,10 @@ struct ScenarioConfig {
     bool target_inbound{true};
     float missile_launch_speed_mps{80.0F};
     bool use_vision_seeker{false};
+    // When true, initialize() picks new missile/target/depot poses inside the play square.
+    bool randomize_initial_positions{false};
+    float play_area_half_m{500.0F};  // 1 km × 1 km centered on origin
+    std::uint32_t spawn_rng_seed{0U};  // 0 = seed from clock each initialize()
 };
 
 struct ScenarioState {
@@ -43,6 +47,7 @@ public:
     explicit EngagementScenario(ScenarioConfig config) noexcept;
 
     void initialize() noexcept;
+    void reinitialize() noexcept;
     void step() noexcept;
     void run(std::uint64_t max_steps) noexcept;
 

@@ -29,6 +29,7 @@ def generate_launch_description():
                 ('target_state', '/flightsim/target_state'),
                 ('missile_state', '/flightsim/missile_state'),
                 ('engagement_status', '/flightsim/engagement_status'),
+                ('reinitialize', '/flightsim/reinitialize'),
             ],
         ),
     ])

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "camera_view_widget.hpp"
 #include "telemetry_bridge.hpp"
 #include "track_view_3d.hpp"
 
@@ -8,6 +9,7 @@
 #include <QMainWindow>
 #include <QPushButton>
 #include <QTextEdit>
+#include <QTimer>
 
 class MainWindow : public QMainWindow {
   Q_OBJECT
@@ -20,14 +22,20 @@ class MainWindow : public QMainWindow {
   void onClearTrails();
   void onResetCamera();
   void onMarkEvent();
+  void onRerun();
   void onFollowToggled(bool checked);
+  void onContinuousToggled(bool checked);
+  void onContinuousRestart();
 
  private:
   void appendLog(const QString& line);
   QLabel* makeMetric(const QString& title);
+  void triggerRerun(const QString& reason);
 
   TelemetryBridge* bridge_;
   TrackView3D* view3d_;
+  CameraViewWidget* seeker_view_;
+  CameraViewWidget* drone_view_;
   QLabel* m_range_;
   QLabel* m_miss_;
   QLabel* m_step_;
@@ -42,5 +50,8 @@ class MainWindow : public QMainWindow {
   QLabel* m_tpos_;
   QTextEdit* log_;
   QCheckBox* follow_check_;
+  QPushButton* continuous_btn_;
+  QTimer* continuous_timer_;
   int event_count_{0};
+  int continuous_run_count_{0};
 };

@@ -14,10 +14,14 @@ struct TargetState {
 struct TargetConfig {
     float speed_mps{40.0F};
     float max_yaw_rate_rps{0.15F};
+    float min_turn_radius_m{0.0F};  // >0 enforces ω ≤ V/R (realistic coordinated turn)
     float max_climb_rate_mps{5.0F};
     float max_climb_accel_mps2{1.5F};
     float spline_segment_sec{4.0F};
+    float spline_segment_jitter{0.45F};  // randomize duration ± fraction
     float max_heading_change_rad{0.55F};
+    float spline_mission_blend{0.45F};  // inbound/outbound pull vs random (0 = pure random)
+    bool smooth_path_only{false};  // constant-rate arcs, no jerky hermite endpoints
     std::uint32_t rng_seed{42U};
     bool outbound{true};
     bool inbound{false};
@@ -28,6 +32,9 @@ struct TargetConfig {
     bool curved_initial_spline{false};
     float initial_spline_curve_rad{0.55F};
     float initial_spline_duration_scale{1.45F};
+    bool constrain_play_area{false};
+    float play_area_half_m{500.0F};
+    float play_area_margin_m{60.0F};
     core::Vec3 outbound_reference_ned_m{};
     core::Vec3 inbound_reference_ned_m{};
 };

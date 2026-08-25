@@ -11,6 +11,7 @@
 #include "flightsim_msgs/msg/target_state.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "ros_seeker_track_source.hpp"
+#include "std_msgs/msg/empty.hpp"
 
 namespace flightsim {
 namespace ros2 {
@@ -76,11 +77,15 @@ public:
             scenario_->set_seeker_source(ros_seeker_source_.get());
         }
         scenario_->initialize();
+        log_spawn();
 
         target_pub_ = create_publisher<flightsim_msgs::msg::TargetState>("target_state", 10);
         missile_pub_ = create_publisher<flightsim_msgs::msg::MissileState>("missile_state", 10);
         status_pub_ = create_publisher<flightsim_msgs::msg::EngagementStatus>("engagement_status", 10);
         scene_pub_ = create_publisher<flightsim_msgs::msg::SceneState>("scene_state", 10);
+
+        reinit_sub_ = create_subscription<std_msgs::msg::Empty>(
+            "reinitialize", 10, [this](const std_msgs::msg::Empty::SharedPtr) { on_reinitialize(); });
 
         const auto period = std::chrono::duration_cast<std::chrono::nanoseconds>(
             std::chrono::duration<double>(dt_sec_));
@@ -89,9 +94,32 @@ public:
         publish_state();
         RCLCPP_INFO(get_logger(), "Engagement sim started (scenario=%s, vision=%s, dt=%.4f s)",
                     scenario_name.c_str(), use_vision_seeker_ ? "on" : "off", dt_sec_);
+        RCLCPP_INFO(get_logger(), "Publish std_msgs/Empty on 'reinitialize' to rerun");
     }
 
 private:
+    void log_spawn() {
+        const auto& cfg = scenario_->config();
+        RCLCPP_INFO(get_logger(),
+                    "Spawn (NED m): missile=(%.1f, %.1f, %.1f) target=(%.1f, %.1f, %.1f) depot=(%.1f, %.1f, %.1f) "
+                    "randomize=%s seed=%u",
+                    cfg.missile_launch_position_ned_m.x, cfg.missile_launch_position_ned_m.y,
+                    cfg.missile_launch_position_ned_m.z, cfg.target_start_position_ned_m.x,
+                    cfg.target_start_position_ned_m.y, cfg.target_start_position_ned_m.z,
+                    cfg.depot_position_ned_m.x, cfg.depot_position_ned_m.y, cfg.depot_position_ned_m.z,
+                    cfg.randomize_initial_positions ? "on" : "off", cfg.spawn_rng_seed);
+    }
+
+    void on_reinitialize() {
+        RCLCPP_INFO(get_logger(), "Reinitialize requested — restarting engagement");
+        scenario_->reinitialize();
+        log_spawn();
+        publish_state();
+        if (timer_) {
+            timer_->reset();
+        }
+    }
+
     void on_timer() {
         scenario_->step();
         publish_state();
@@ -192,6 +220,7 @@ private:
     rclcpp::Publisher<flightsim_msgs::msg::MissileState>::SharedPtr missile_pub_;
     rclcpp::Publisher<flightsim_msgs::msg::EngagementStatus>::SharedPtr status_pub_;
     rclcpp::Publisher<flightsim_msgs::msg::SceneState>::SharedPtr scene_pub_;
+    rclcpp::Subscription<std_msgs::msg::Empty>::SharedPtr reinit_sub_;
     rclcpp::TimerBase::SharedPtr timer_;
 };
 

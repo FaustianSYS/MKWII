@@ -26,6 +26,7 @@ def generate_launch_description():
                 ('missile_state', '/flightsim/missile_state'),
                 ('engagement_status', '/flightsim/engagement_status'),
                 ('seeker_track', '/flightsim/seeker_track'),
+                ('reinitialize', '/flightsim/reinitialize'),
             ],
         ),
         Node(

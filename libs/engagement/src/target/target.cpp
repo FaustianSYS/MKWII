@@ -14,6 +14,15 @@ float horizontal_magnitude(const core::Vec3& v) noexcept {
     return std::sqrt((v.x * v.x) + (v.y * v.y));
 }
 
+float max_yaw_rate_for_config(const TargetConfig& config) noexcept {
+    float yaw = config.max_yaw_rate_rps;
+    if (config.min_turn_radius_m > 1.0F && config.speed_mps > 0.1F) {
+        const float from_radius = config.speed_mps / config.min_turn_radius_m;
+        yaw = (yaw > 0.0F) ? std::min(yaw, from_radius) : from_radius;
+    }
+    return std::max(yaw, 0.01F);
+}
+
 float wrap_angle_rad(float angle_rad) noexcept {
     while (angle_rad > kPi) {
         angle_rad -= kTwoPi;
@@ -82,8 +91,8 @@ void apply_inbound_soft_correction(const TargetConfig& config, const TargetState
     if (vel_horiz.dot(toward_dir) < 0.0F) {
         const float correction = shortest_heading_delta(heading_rad, inbound_heading);
         heading_rad = wrap_angle_rad(heading_rad + (correction * 0.12F));
-        heading_rate_rps = core::clamp(heading_rate_rps + (correction * 0.05F), -config.max_yaw_rate_rps,
-                                       config.max_yaw_rate_rps);
+        heading_rate_rps = core::clamp(heading_rate_rps + (correction * 0.05F), -max_yaw_rate_for_config(config),
+                                       max_yaw_rate_for_config(config));
     }
 }
 
@@ -138,8 +147,8 @@ void apply_missile_evasion(const TargetConfig& config, const TargetState& state,
 
     const float evasion_delta = shortest_heading_delta(heading_rad, evasion_heading);
     heading_rad = wrap_angle_rad(heading_rad + (evasion_delta * evasion_weight));
-    heading_rate_rps = core::clamp(heading_rate_rps + (sign * evasion_weight * config.max_yaw_rate_rps * 0.32F),
-                                   -config.max_yaw_rate_rps, config.max_yaw_rate_rps);
+    heading_rate_rps = core::clamp(heading_rate_rps + (sign * evasion_weight * max_yaw_rate_for_config(config) * 0.20F),
+                                   -max_yaw_rate_for_config(config), max_yaw_rate_for_config(config));
 
     if (config.inbound) {
         const float mission_heading = inbound_heading_rad(config.inbound_reference_ned_m, state.position_ned_m);
@@ -175,9 +184,47 @@ void apply_outbound_soft_correction(const TargetConfig& config, const TargetStat
     if (vel_horiz.dot(away_dir) < 0.0F) {
         const float correction = shortest_heading_delta(heading_rad, outbound_heading);
         heading_rad = wrap_angle_rad(heading_rad + (correction * 0.12F));
-        heading_rate_rps = core::clamp(heading_rate_rps + (correction * 0.05F), -config.max_yaw_rate_rps,
-                                       config.max_yaw_rate_rps);
+        heading_rate_rps = core::clamp(heading_rate_rps + (correction * 0.05F), -max_yaw_rate_for_config(config),
+                                       max_yaw_rate_for_config(config));
     }
+}
+
+void apply_play_area_soft_correction(const TargetConfig& config, const TargetState& state, float& heading_rad,
+                                     float& heading_rate_rps) noexcept {
+    if (!config.constrain_play_area || config.play_area_half_m <= 1.0F) {
+        return;
+    }
+
+    const float half = config.play_area_half_m;
+    const float margin = core::clamp(config.play_area_margin_m, 10.0F, half * 0.8F);
+    const float soft = half - margin;
+    const float x = state.position_ned_m.x;
+    const float y = state.position_ned_m.y;
+
+    float push_n = 0.0F;
+    float push_e = 0.0F;
+    if (x > soft) {
+        push_n -= (x - soft) / margin;
+    } else if (x < -soft) {
+        push_n += (-soft - x) / margin;
+    }
+    if (y > soft) {
+        push_e -= (y - soft) / margin;
+    } else if (y < -soft) {
+        push_e += (-soft - y) / margin;
+    }
+
+    const float push_mag = std::sqrt((push_n * push_n) + (push_e * push_e));
+    if (push_mag < 1.0e-4F) {
+        return;
+    }
+
+    const float toward_heading = std::atan2(push_e, push_n);
+    const float weight = core::clamp(push_mag, 0.0F, 1.0F);
+    const float correction = shortest_heading_delta(heading_rad, toward_heading);
+    heading_rad = wrap_angle_rad(heading_rad + (correction * weight * 0.18F));
+    heading_rate_rps = core::clamp(heading_rate_rps + (correction * weight * 0.05F), -max_yaw_rate_for_config(config),
+                                   max_yaw_rate_for_config(config));
 }
 
 void splice_initial_spline_segment(TargetRuntime& runtime, const TargetConfig& config,
@@ -193,23 +240,34 @@ void splice_initial_spline_segment(TargetRuntime& runtime, const TargetConfig& c
         mission_heading = outbound_heading_rad(config.outbound_reference_ned_m, start_position_ned_m);
     }
 
+    const float yaw_lim = max_yaw_rate_for_config(config);
+    const float max_delta = std::min(config.max_heading_change_rad, yaw_lim * next.duration_sec * 0.90F);
     const float curve_sign = runtime.rng.uniform(0.0F, 1.0F) >= 0.5F ? 1.0F : -1.0F;
     const float curve_mag =
-        core::clamp(config.initial_spline_curve_rad, 0.15F, config.max_heading_change_rad);
-    const float start_offset = curve_sign * curve_mag;
+        core::clamp(config.initial_spline_curve_rad, 0.05F, std::max(max_delta, 0.05F));
+    const float heading_delta = -curve_sign * curve_mag;  // ease toward mission heading
 
-    next.start_heading_rad = wrap_angle_rad(mission_heading + start_offset);
-    next.end_heading_rad = wrap_angle_rad(mission_heading + (start_offset * 0.22F));
-    next.start_heading_rate_rps = curve_sign * config.max_yaw_rate_rps * 0.38F;
-    next.end_heading_rate_rps = -curve_sign * config.max_yaw_rate_rps * 0.12F;
+    next.start_heading_rad = wrap_angle_rad(mission_heading + (curve_sign * curve_mag));
+    next.end_heading_rad = wrap_angle_rad(next.start_heading_rad + heading_delta);
 
+    if (config.smooth_path_only) {
+        const float omega = heading_delta / std::max(next.duration_sec, 1.0e-3F);
+        next.start_heading_rate_rps = core::clamp(omega, -yaw_lim, yaw_lim);
+        next.end_heading_rate_rps = next.start_heading_rate_rps;
+        next.start_climb_accel_mps2 = 0.0F;
+        next.end_climb_accel_mps2 = 0.0F;
+        next.end_climb_mps = runtime.climb_rate_mps;
+    } else {
+        next.start_heading_rate_rps = curve_sign * yaw_lim * 0.20F;
+        next.end_heading_rate_rps = -curve_sign * yaw_lim * 0.08F;
+        next.start_climb_accel_mps2 =
+            runtime.rng.uniform(-config.max_climb_accel_mps2 * 0.25F, config.max_climb_accel_mps2 * 0.25F);
+        next.end_climb_accel_mps2 = 0.0F;
+        next.end_climb_mps =
+            runtime.climb_rate_mps +
+            (curve_sign * runtime.rng.uniform(0.08F, 0.28F) * config.max_climb_rate_mps);
+    }
     next.start_climb_mps = runtime.climb_rate_mps;
-    next.end_climb_mps =
-        runtime.climb_rate_mps +
-        (curve_sign * runtime.rng.uniform(0.08F, 0.28F) * config.max_climb_rate_mps);
-    next.start_climb_accel_mps2 =
-        runtime.rng.uniform(-config.max_climb_accel_mps2 * 0.25F, config.max_climb_accel_mps2 * 0.25F);
-    next.end_climb_accel_mps2 = 0.0F;
 
     runtime.heading_rad = next.start_heading_rad;
     runtime.heading_rate_rps = next.start_heading_rate_rps;
@@ -221,31 +279,64 @@ void splice_initial_spline_segment(TargetRuntime& runtime, const TargetConfig& c
 
 void splice_spline_segment(TargetRuntime& runtime, const TargetConfig& config, const TargetState& state) noexcept {
     TargetSplineSegment next{};
-    next.duration_sec = core::clamp(config.spline_segment_sec, 0.5F, 30.0F);
+    const float jitter = core::clamp(config.spline_segment_jitter, 0.0F, 0.9F);
+    const float dur_lo = config.spline_segment_sec * (1.0F - jitter);
+    const float dur_hi = config.spline_segment_sec * (1.0F + jitter);
+    next.duration_sec = core::clamp(runtime.rng.uniform(dur_lo, dur_hi), 0.5F, 30.0F);
     next.start_heading_rad = runtime.heading_rad;
     next.start_climb_mps = runtime.climb_rate_mps;
     next.start_heading_rate_rps = runtime.heading_rate_rps;
     next.start_climb_accel_mps2 = runtime.climb_accel_mps2;
 
-    const float max_delta = core::clamp(config.max_heading_change_rad, 0.05F, kPi);
+    const float yaw_lim = max_yaw_rate_for_config(config);
+    // Arc length constraint: Δψ ≤ (V/R) * Δt  (= yaw_lim * duration)
+    const float max_by_radius = yaw_lim * next.duration_sec * 0.95F;
+    const float max_delta = std::min(core::clamp(config.max_heading_change_rad, 0.05F, kPi), max_by_radius);
+
     float heading_delta = runtime.rng.uniform(-max_delta, max_delta);
-    if (config.inbound) {
+    const float mission_blend = core::clamp(config.spline_mission_blend, 0.0F, 1.0F);
+    if (mission_blend > 0.0F && config.inbound) {
         const float inbound_heading = inbound_heading_rad(config.inbound_reference_ned_m, state.position_ned_m);
         const float inbound_pull = shortest_heading_delta(runtime.heading_rad, inbound_heading);
-        heading_delta = (heading_delta * 0.55F) + (inbound_pull * 0.45F);
-    } else if (config.outbound) {
+        heading_delta = (heading_delta * (1.0F - mission_blend)) + (inbound_pull * mission_blend);
+    } else if (mission_blend > 0.0F && config.outbound) {
         const float outbound_heading = outbound_heading_rad(config.outbound_reference_ned_m, state.position_ned_m);
         const float outbound_pull = shortest_heading_delta(runtime.heading_rad, outbound_heading);
-        heading_delta = (heading_delta * 0.55F) + (outbound_pull * 0.45F);
+        heading_delta = (heading_delta * (1.0F - mission_blend)) + (outbound_pull * mission_blend);
     }
 
+    // Soft wander bias toward play-area center so the track stays inside the box.
+    if (config.constrain_play_area && config.play_area_half_m > 1.0F) {
+        const float half = config.play_area_half_m;
+        const float r = horizontal_magnitude(state.position_ned_m);
+        if (r > half * 0.40F) {
+            const float toward_center =
+                std::atan2(-state.position_ned_m.y, -state.position_ned_m.x);
+            const float pull = shortest_heading_delta(runtime.heading_rad, toward_center);
+            const float weight = core::clamp((r / half) * 0.22F, 0.0F, 0.28F);
+            heading_delta = (heading_delta * (1.0F - weight)) + (pull * weight);
+        }
+    }
+
+    heading_delta = core::clamp(heading_delta, -max_delta, max_delta);
     next.end_heading_rad = wrap_angle_rad(runtime.heading_rad + heading_delta);
-    next.end_climb_mps =
-        runtime.rng.uniform(-config.max_climb_rate_mps, config.max_climb_rate_mps);
-    next.end_heading_rate_rps =
-        runtime.rng.uniform(-config.max_yaw_rate_rps, config.max_yaw_rate_rps);
-    next.end_climb_accel_mps2 =
-        runtime.rng.uniform(-config.max_climb_accel_mps2, config.max_climb_accel_mps2);
+
+    if (config.smooth_path_only) {
+        // Constant turn-rate arc (C1-smooth match of ω across the segment).
+        const float omega = heading_delta / std::max(next.duration_sec, 1.0e-3F);
+        next.start_heading_rate_rps = core::clamp(omega, -yaw_lim, yaw_lim);
+        next.end_heading_rate_rps = next.start_heading_rate_rps;
+        next.end_climb_mps =
+            core::clamp(runtime.climb_rate_mps + runtime.rng.uniform(-0.35F, 0.35F) * config.max_climb_rate_mps,
+                        -config.max_climb_rate_mps, config.max_climb_rate_mps);
+        next.start_climb_accel_mps2 = 0.0F;
+        next.end_climb_accel_mps2 = 0.0F;
+    } else {
+        next.end_climb_mps = runtime.rng.uniform(-config.max_climb_rate_mps, config.max_climb_rate_mps);
+        next.end_heading_rate_rps = runtime.rng.uniform(-yaw_lim, yaw_lim);
+        next.end_climb_accel_mps2 =
+            runtime.rng.uniform(-config.max_climb_accel_mps2, config.max_climb_accel_mps2);
+    }
 
     runtime.segment = next;
     runtime.segment_elapsed_sec = 0.0F;
@@ -364,15 +455,22 @@ void step_target(TargetState& state, const TargetConfig& config, TargetRuntime& 
                           climb_accel_mps2);
 
     heading_rad = wrap_angle_rad(heading_rad);
-    heading_rate_rps =
-        core::clamp(heading_rate_rps, -config.max_yaw_rate_rps, config.max_yaw_rate_rps);
+    const float yaw_lim = max_yaw_rate_for_config(config);
+    heading_rate_rps = core::clamp(heading_rate_rps, -yaw_lim, yaw_lim);
     climb_mps = core::clamp(climb_mps, -config.max_climb_rate_mps, config.max_climb_rate_mps);
     climb_accel_mps2 =
         core::clamp(climb_accel_mps2, -config.max_climb_accel_mps2, config.max_climb_accel_mps2);
 
     apply_inbound_soft_correction(config, state, heading_rad, heading_rate_rps);
     apply_outbound_soft_correction(config, state, heading_rad, heading_rate_rps);
-    apply_missile_evasion(config, state, runtime, missile_threat, heading_rad, heading_rate_rps, climb_mps);
+    apply_play_area_soft_correction(config, state, heading_rad, heading_rate_rps);
+    if (!config.smooth_path_only) {
+        apply_missile_evasion(config, state, runtime, missile_threat, heading_rad, heading_rate_rps, climb_mps);
+    } else if (config.evade_missile) {
+        // Radius-limited soft evasion only (no weave snaps).
+        apply_missile_evasion(config, state, runtime, missile_threat, heading_rad, heading_rate_rps, climb_mps);
+        heading_rate_rps = core::clamp(heading_rate_rps, -yaw_lim, yaw_lim);
+    }
 
     runtime.heading_rad = heading_rad;
     runtime.heading_rate_rps = heading_rate_rps;
@@ -385,6 +483,19 @@ void step_target(TargetState& state, const TargetConfig& config, TargetRuntime& 
         horiz_speed * std::sin(heading_rad),
         climb_mps};
     state.position_ned_m = state.position_ned_m + (state.velocity_ned_mps * dt);
+
+    // Keep altitude in a flyable band over the play area (NED Down positive toward ground).
+    if (config.constrain_play_area) {
+        constexpr float kMinDown = -160.0F;  // ~160 m AGL
+        constexpr float kMaxDown = -25.0F;   // ~25 m AGL
+        if (state.position_ned_m.z < kMinDown) {
+            state.position_ned_m.z = kMinDown;
+            runtime.climb_rate_mps = std::max(runtime.climb_rate_mps, 0.0F);
+        } else if (state.position_ned_m.z > kMaxDown) {
+            state.position_ned_m.z = kMaxDown;
+            runtime.climb_rate_mps = std::min(runtime.climb_rate_mps, 0.0F);
+        }
+    }
 }
 
 }  // namespace engagement

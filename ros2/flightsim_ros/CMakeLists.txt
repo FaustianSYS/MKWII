@@ -21,6 +21,7 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(flightsim_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
+find_package(std_msgs REQUIRED)
 
 # ── FDM node ─────────────────────────────────────────────────────────────────
 add_executable(flightsim_fdm_node src/fdm_node.cpp)
@@ -61,7 +62,7 @@ target_link_directories(flightsim_engagement_node PRIVATE
   "${FLIGHTSIM_BUILD_DIR}/libs/core"
 )
 
-ament_target_dependencies(flightsim_engagement_node rclcpp flightsim_msgs)
+ament_target_dependencies(flightsim_engagement_node rclcpp flightsim_msgs std_msgs)
 
 target_link_libraries(flightsim_engagement_node
   flightsim_engagement

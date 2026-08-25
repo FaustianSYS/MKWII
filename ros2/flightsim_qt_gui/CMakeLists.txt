@@ -10,6 +10,7 @@ set(CMAKE_AUTOUIC ON)
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(flightsim_msgs REQUIRED)
+find_package(std_msgs REQUIRED)
 find_package(Qt5 REQUIRED COMPONENTS Core Gui Widgets OpenGL)
 find_package(OpenGL REQUIRED)
 
@@ -17,6 +18,8 @@ add_executable(flightsim_qt_tactical_gui
   src/main.cpp
   src/main_window.cpp
   src/main_window.hpp
+  src/camera_view_widget.cpp
+  src/camera_view_widget.hpp
   src/track_view_3d.cpp
   src/track_view_3d.hpp
   src/telemetry_bridge.cpp
@@ -31,6 +34,7 @@ target_include_directories(flightsim_qt_tactical_gui PRIVATE
 ament_target_dependencies(flightsim_qt_tactical_gui
   rclcpp
   flightsim_msgs
+  std_msgs
 )
 
 target_link_libraries(flightsim_qt_tactical_gui

@@ -27,6 +27,7 @@ TelemetryBridge::TelemetryBridge(QObject* parent) : QObject(parent) {
   scene_sub_ = node_->create_subscription<flightsim_msgs::msg::SceneState>(
       "/flightsim/scene_state", sensor_qos,
       [this](const flightsim_msgs::msg::SceneState::SharedPtr msg) { onScene(msg); });
+  reinit_pub_ = node_->create_publisher<std_msgs::msg::Empty>("/flightsim/reinitialize", 10);
 }
 
 TelemetryBridge::~TelemetryBridge() = default;
@@ -41,6 +42,21 @@ void TelemetryBridge::clearTrails() {
   QMutexLocker lock(&mutex_);
   snap_.missile_trail.clear();
   snap_.target_trail.clear();
+}
+
+void TelemetryBridge::requestReinitialize() {
+  {
+    QMutexLocker lock(&mutex_);
+    snap_.missile_trail.clear();
+    snap_.target_trail.clear();
+    last_complete_ = false;
+    snap_.complete = false;
+    snap_.intercept = false;
+    snap_.step_count = 0;
+  }
+  std_msgs::msg::Empty msg;
+  reinit_pub_->publish(msg);
+  emit telemetryUpdated();
 }
 
 TelemetrySnapshot TelemetryBridge::snapshot() const {
@@ -81,6 +97,7 @@ void TelemetryBridge::onMissile(const flightsim_msgs::msg::MissileState::SharedP
     snap_.fin_roll_deg = msg->fin_roll_rad * 57.2957795F;
     snap_.rate_mag_rps = rate;
     snap_.seeker_locked = msg->seeker_locked;
+    snap_.seeker_fov_rad = msg->seeker_fov_azimuth_rad > 0.05F ? msg->seeker_fov_azimuth_rad : 0.52F;
     snap_.missile_active = msg->active;
     snap_.missile_hit = msg->hit;
     pushTrail(snap_.missile_trail, pos);

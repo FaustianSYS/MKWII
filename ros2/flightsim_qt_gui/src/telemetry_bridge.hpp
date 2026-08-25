@@ -10,6 +10,7 @@
 #include <flightsim_msgs/msg/missile_state.hpp>
 #include <flightsim_msgs/msg/scene_state.hpp>
 #include <flightsim_msgs/msg/target_state.hpp>
+#include <std_msgs/msg/empty.hpp>
 
 struct TrackSample {
   QVector3D position_ned{};
@@ -35,6 +36,7 @@ struct TelemetrySnapshot {
   float fin_roll_deg{0.0F};
   float rate_mag_rps{0.0F};
   bool seeker_locked{false};
+  float seeker_fov_rad{0.52F};
   bool missile_active{false};
   bool missile_hit{false};
 
@@ -64,6 +66,7 @@ class TelemetryBridge : public QObject {
  public slots:
   void start();
   void clearTrails();
+  void requestReinitialize();
 
  signals:
   void telemetryUpdated();
@@ -84,6 +87,7 @@ class TelemetryBridge : public QObject {
   rclcpp::Subscription<flightsim_msgs::msg::TargetState>::SharedPtr target_sub_;
   rclcpp::Subscription<flightsim_msgs::msg::EngagementStatus>::SharedPtr status_sub_;
   rclcpp::Subscription<flightsim_msgs::msg::SceneState>::SharedPtr scene_sub_;
+  rclcpp::Publisher<std_msgs::msg::Empty>::SharedPtr reinit_pub_;
 
   mutable QMutex mutex_;
   TelemetrySnapshot snap_;

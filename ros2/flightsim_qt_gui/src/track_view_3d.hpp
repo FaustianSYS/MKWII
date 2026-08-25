@@ -6,7 +6,10 @@
 #include <QOpenGLFunctions_2_1>
 #include <QOpenGLWidget>
 #include <QPoint>
+#include <QVector>
 #include <QVector3D>
+#include <array>
+#include <cstdint>
 
 class TrackView3D : public QOpenGLWidget, protected QOpenGLFunctions_2_1 {
   Q_OBJECT
@@ -17,6 +20,7 @@ class TrackView3D : public QOpenGLWidget, protected QOpenGLFunctions_2_1 {
   void setSnapshot(const TelemetrySnapshot& snap);
   void resetCamera();
   void followMissile(bool enabled);
+  void randomizeGround();
 
  protected:
   void initializeGL() override;
@@ -28,7 +32,17 @@ class TrackView3D : public QOpenGLWidget, protected QOpenGLFunctions_2_1 {
   void wheelEvent(QWheelEvent* event) override;
 
  private:
+  struct TerrainWave {
+    float amp_m{0.0F};
+    float freq_n{0.0F};
+    float freq_e{0.0F};
+    float phase{0.0F};
+  };
+
   QVector3D nedToDisplay(const QVector3D& ned) const;
+  void regenerateTerrain(std::uint32_t seed);
+  float sampleGroundUp_m(float north_m, float east_m) const;
+  void drawGroundPlane();
   void drawGrid();
   void drawAxes();
   void drawTrail(const QVector<TrackSample>& trail, float r, float g, float b, float width);
@@ -49,4 +63,11 @@ class TrackView3D : public QOpenGLWidget, protected QOpenGLFunctions_2_1 {
   QPoint last_mouse_;
   bool dragging_{false};
   bool panning_{false};
+
+  static constexpr float kGroundHalf_m = 500.0F;
+  static constexpr int kTerrainRes = 48;  // quads per side → (res+1)^2 verts
+  std::array<TerrainWave, 6> terrain_waves_{};
+  float terrain_base_up_m_{0.0F};
+  std::uint32_t terrain_seed_{1U};
+  quint64 last_step_count_{0};
 };
