@@ -51,10 +51,14 @@ Reference: [Missile C++ core](sim/missile_core.md) · [Drone / target C++ core](
 
 **Exit criteria:** Stable intercept across Mach 0.5–2.5 envelope; autopilot holds commanded accel within 10% at 100 Hz.
 
-### Phase 3 — Full engagement fidelity ⬜ Planned
+### Phase 3 — Engagement & target fidelity 🔄 In progress
 
 | Deliverable | Status | Notes |
 |-------------|--------|-------|
+| Randomized spawns (1 km × 1 km) | ✅ | `scenario.cpp` on `initialize()` / `reinitialize()` |
+| Engagement reinitialize (ROS + GUI) | ✅ | `/flightsim/reinitialize`, Qt **Initialize / Rerun** |
+| Smooth spline drone paths | ✅ | Constant-rate arc segments in `target.cpp` |
+| Realistic turn radius (450 m default) | ✅ | `min_turn_radius_m`, `smooth_path_only` |
 | Full inertia tensor (Ixy, Ixz, Iyz) | ⬜ | Off-diagonal terms in EOM |
 | Seeker gimbal / FOV model in sim | ⬜ | Complement geometric seeker |
 | Multi-target scenario support | ⬜ | Extend `EngagementScenario` |
@@ -105,16 +109,34 @@ Reference: [Missile C++ core](sim/missile_core.md) · [Drone / target C++ core](
 | AccuCities London LOD2 map | ✅ | `FlightSimLondonMapActor` |
 | Seeker SceneCapture (640×480 mono8) | ✅ | UE5 plugin |
 | Telemetry Blueprint struct | ✅ | `FFlightSimTelemetry` |
+| Shahed-136 mesh asset (OBJ/GLB) | ✅ | `assets/ue5/models/shahed_136/` |
 
-### Phase UE-2 — Operator HUD 🔄 Next
+### Phase UE-2 — Qt tactical operator GUI ✅ Done
+
+**Goal:** Local OpenGL operator console for engagement testing without Unreal.
+
+| Deliverable | Status | Location |
+|-------------|--------|----------|
+| C++ Qt5 + OpenGL 3D track view | ✅ | `ros2/flightsim_qt_gui/` |
+| Missile / target trails, LOS, curved terrain | ✅ | `track_view_3d.cpp` |
+| Shahed-136 3D mesh (oriented from attitude) | ✅ | `obj_mesh`, `shahed_model`, `track_view_3d` |
+| Seeker + drone picture-in-picture | ✅ | `camera_view_widget.cpp` |
+| Shahed mesh in seeker PiP | ✅ | Software-projected mesh from missile boresight |
+| Live NED metrics + resizable panel | ✅ | `main_window.cpp` |
+| Follow missile / orbit / pan / zoom | ✅ | `track_view_3d` |
+| Initialize / Rerun + continuous run | ✅ | `/flightsim/reinitialize`, panel toggle |
+| Launch script | ✅ | `./scripts/launch_qt_gui.sh` |
+| PyQt5 2D map fallback | ✅ | `tools/qt_gui/` |
+
+### Phase UE-3 — UE5 operator HUD 🔄 Next
 
 | Deliverable | Status | Notes |
 |-------------|--------|-------|
-| Qt 3D tactical test GUI (OpenGL tracks + metrics) | ✅ | `ros2/flightsim_qt_gui/` · `./scripts/launch_qt_gui.sh` |
 | UMG HUD overlay (range, lock, fins, thrust) | ⬜ | Bind to `FFlightSimTelemetry` |
 | Camera director (tactical / missile / target / free) | ⬜ | Planned in architecture canvas |
-| Seeker picture-in-picture on HUD | ⬜ | Subscribes seeker image topic |
+| Seeker picture-in-picture on UE5 HUD | ⬜ | Subscribes seeker image topic |
 | Intercept / miss-distance event display | ⬜ | From `engagement_status` |
+| Import Shahed mesh into `BP_Shahed136` | ⬜ | See `assets/ue5/models/shahed_136/README.md` |
 
 ---
 
@@ -160,6 +182,7 @@ Details: [docs/isaac/dataset_sidecar.md](isaac/dataset_sidecar.md)
 
 | Mode | Script / launch file | Domains | Vision loop |
 |------|---------------------|---------|-------------|
+| Qt tactical GUI | `launch_qt_gui.sh` | Sim + local viz | Off (geometric seeker) |
 | UE5 co-sim | `launch_ue5_ros2.sh` + `air_defense_vision.launch.py` | Sim + CV + UE5 | Closed (UE5 capture) |
 | Software bridge | `launch_ue5_bridge.sh` + `air_defense_ue5.launch.py` | Sim + CV | Closed (synthetic) |
 | Isaac dataset | `launch_dataset_sidecar.sh` | Sim only | Off (geometric seeker) |
@@ -170,7 +193,7 @@ Details: [docs/isaac/dataset_sidecar.md](isaac/dataset_sidecar.md)
 ## Current priority order
 
 1. **Phase 2 missile (remaining)** — Mach/α aero tables + accel limiting
-2. **Phase UE-2** — UMG HUD + camera director
+2. **Phase UE-3** — UE5 UMG HUD + camera director + Shahed BP import
 3. **Isaac Phase 1** — USD scene + live PNG export
 4. **Phase CV-2** — Track filtering + Isaac dataset training pipeline
 
