@@ -12,6 +12,7 @@
   <depend>rclcpp</depend>
   <depend>flightsim_msgs</depend>
   <depend>std_msgs</depend>
+  <depend>ament_index_cpp</depend>
 
   <build_depend>qtbase5-dev</build_depend>
   <build_depend>libqt5opengl5-dev</build_depend>

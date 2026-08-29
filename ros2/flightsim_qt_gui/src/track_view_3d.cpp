@@ -1,5 +1,8 @@
 #include "track_view_3d.hpp"
 
+#include "shahed_model.hpp"
+
+#include <QFile>
 #include <QLineF>
 #include <QMouseEvent>
 #include <QPainter>
@@ -30,6 +33,12 @@ TrackView3D::TrackView3D(QWidget* parent) : QOpenGLWidget(parent) {
   setFocusPolicy(Qt::StrongFocus);
   const auto ticks = std::chrono::steady_clock::now().time_since_epoch().count();
   regenerateTerrain(static_cast<std::uint32_t>(ticks) ^ 0xA5A5A5A5U);
+}
+
+TrackView3D::~TrackView3D() {
+  makeCurrent();
+  shahed_mesh_.destroy(this);
+  doneCurrent();
 }
 
 void TrackView3D::setSnapshot(const TelemetrySnapshot& snap) {
@@ -114,6 +123,7 @@ void TrackView3D::initializeGL() {
   glEnable(GL_BLEND);
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
   glEnable(GL_LINE_SMOOTH);
+  ensureShahedMesh();
 }
 
 void TrackView3D::resizeGL(int w, int h) {
@@ -167,11 +177,12 @@ void TrackView3D::paintGL() {
   QMatrix4x4 view;
   view.lookAt(eye, look_at_, QVector3D(0.0F, 0.0F, 1.0F));
 
-  QMatrix4x4 mvp = projection * view;
+  const QMatrix4x4 mvp = projection * view;
+
   glMatrixMode(GL_PROJECTION);
-  glLoadMatrixf(mvp.constData());
+  glLoadMatrixf(projection.constData());
   glMatrixMode(GL_MODELVIEW);
-  glLoadIdentity();
+  glLoadMatrixf(view.constData());
 
   drawGroundPlane();
   drawGrid();
@@ -181,7 +192,11 @@ void TrackView3D::paintGL() {
   drawLos();
 
   if (snap_.has_target) {
-    drawMarker(nedToDisplay(snap_.target_pos_ned), 1.0F, 0.45F, 0.15F, 18.0F);
+    if (shahed_mesh_ok_) {
+      drawShahedModel(snap_.target_pos_ned);
+    } else {
+      drawMarker(nedToDisplay(snap_.target_pos_ned), 1.0F, 0.45F, 0.15F, 18.0F);
+    }
   }
   if (snap_.has_missile) {
     drawMarker(nedToDisplay(snap_.missile_pos_ned), 0.2F, 0.9F, 1.0F, 14.0F);
@@ -194,6 +209,74 @@ void TrackView3D::paintGL() {
   }
 
   drawCoordOverlays(mvp);
+}
+
+void TrackView3D::ensureShahedMesh() {
+  if (shahed_mesh_load_attempted_) {
+    return;
+  }
+  shahed_mesh_load_attempted_ = true;
+
+  if (!shahed::prepareMesh(shahed_mesh_)) {
+    shahed_mesh_ok_ = false;
+    return;
+  }
+  shahed_mesh_.compileDisplayList(this);
+  shahed_mesh_ok_ = shahed_mesh_.isCompiled();
+}
+
+QQuaternion TrackView3D::targetOrientation() const {
+  return shahed::targetOrientation(snap_);
+}
+
+QMatrix4x4 TrackView3D::bodyToDisplayRotation(const QQuaternion& attitude_wxyz) const {
+  QMatrix4x4 rotation;
+  rotation.rotate(attitude_wxyz.normalized());
+  // NED (+Z down) -> display (+Z up): proper rotation is S * R * S, not S * R (which mirrors).
+  rotation(0, 2) = -rotation(0, 2);
+  rotation(1, 2) = -rotation(1, 2);
+  rotation(2, 0) = -rotation(2, 0);
+  rotation(2, 1) = -rotation(2, 1);
+  return rotation;
+}
+
+void TrackView3D::drawShahedModel(const QVector3D& pos_ned) {
+  if (!shahed_mesh_ok_) {
+    return;
+  }
+
+  const QVector3D origin = nedToDisplay(pos_ned);
+  const QQuaternion attitude = targetOrientation();
+
+  GLboolean lighting_was_enabled = GL_FALSE;
+  glGetBooleanv(GL_LIGHTING, &lighting_was_enabled);
+  glEnable(GL_LIGHT0);
+  glEnable(GL_LIGHTING);
+  glEnable(GL_COLOR_MATERIAL);
+  glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE);
+  glEnable(GL_NORMALIZE);
+
+  const GLfloat light_pos[4] = {-0.35F, 0.55F, 0.75F, 0.0F};
+  glLightfv(GL_LIGHT0, GL_POSITION, light_pos);
+  const GLfloat ambient[4] = {0.18F, 0.18F, 0.18F, 1.0F};
+  const GLfloat diffuse[4] = {0.95F, 0.95F, 0.95F, 1.0F};
+  glLightfv(GL_LIGHT0, GL_AMBIENT, ambient);
+  glLightfv(GL_LIGHT0, GL_DIFFUSE, diffuse);
+
+  glPushMatrix();
+  glTranslatef(origin.x(), origin.y(), origin.z());
+  if (!attitude.isNull()) {
+    glMultMatrixf(bodyToDisplayRotation(attitude).constData());
+  }
+  glColor4f(0.78F, 0.42F, 0.16F, 1.0F);
+  shahed_mesh_.draw(this);
+  glPopMatrix();
+
+  if (!lighting_was_enabled) {
+    glDisable(GL_LIGHTING);
+  }
+  glDisable(GL_COLOR_MATERIAL);
+  glDisable(GL_NORMALIZE);
 }
 
 QPointF TrackView3D::projectToScreen(const QVector3D& display_pos, const QMatrix4x4& mvp) const {

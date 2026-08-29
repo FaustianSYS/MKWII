@@ -2,6 +2,7 @@
 
 #include <QMutex>
 #include <QObject>
+#include <QQuaternion>
 #include <QVector3D>
 #include <QVector>
 
@@ -39,9 +40,13 @@ struct TelemetrySnapshot {
   float seeker_fov_rad{0.52F};
   bool missile_active{false};
   bool missile_hit{false};
+  QQuaternion missile_attitude{};
+  bool has_missile_attitude{false};
 
   QVector3D target_pos_ned{};
   QVector3D target_vel_ned{};
+  QQuaternion target_attitude{};
+  bool has_target_attitude{false};
   float target_speed_mps{0.0F};
 
   float range_m{0.0F};

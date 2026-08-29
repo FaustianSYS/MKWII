@@ -26,7 +26,7 @@ ensure_trimesh() {
 
 build_converted_meshes() {
   ensure_trimesh
-  python3 <<'PY'
+  python3 <<PY
 import trimesh
 from pathlib import Path
 

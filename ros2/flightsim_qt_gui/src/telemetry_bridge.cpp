@@ -100,6 +100,8 @@ void TelemetryBridge::onMissile(const flightsim_msgs::msg::MissileState::SharedP
     snap_.seeker_fov_rad = msg->seeker_fov_azimuth_rad > 0.05F ? msg->seeker_fov_azimuth_rad : 0.52F;
     snap_.missile_active = msg->active;
     snap_.missile_hit = msg->hit;
+    snap_.missile_attitude = QQuaternion(msg->attitude_w, msg->attitude_x, msg->attitude_y, msg->attitude_z);
+    snap_.has_missile_attitude = snap_.missile_attitude.length() > 1.0e-6F;
     pushTrail(snap_.missile_trail, pos);
   }
   emit telemetryUpdated();
@@ -114,6 +116,13 @@ void TelemetryBridge::onTarget(const flightsim_msgs::msg::TargetState::SharedPtr
     snap_.target_pos_ned = pos;
     snap_.target_vel_ned = vel;
     snap_.target_speed_mps = magnitude(vel);
+    if (msg->attitude_wxyz.size() >= 4U) {
+      snap_.target_attitude = QQuaternion(msg->attitude_wxyz[0], msg->attitude_wxyz[1], msg->attitude_wxyz[2],
+                                          msg->attitude_wxyz[3]);
+      snap_.has_target_attitude = snap_.target_attitude.length() > 1.0e-6F;
+    } else {
+      snap_.has_target_attitude = false;
+    }
     pushTrail(snap_.target_trail, pos);
   }
   emit telemetryUpdated();

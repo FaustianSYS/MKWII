@@ -1,11 +1,13 @@
 #pragma once
 
+#include "obj_mesh.hpp"
 #include "telemetry_bridge.hpp"
 
 #include <QMatrix4x4>
 #include <QOpenGLFunctions_2_1>
 #include <QOpenGLWidget>
 #include <QPoint>
+#include <QQuaternion>
 #include <QVector>
 #include <QVector3D>
 #include <array>
@@ -15,6 +17,7 @@ class TrackView3D : public QOpenGLWidget, protected QOpenGLFunctions_2_1 {
   Q_OBJECT
  public:
   explicit TrackView3D(QWidget* parent = nullptr);
+  ~TrackView3D() override;
 
  public slots:
   void setSnapshot(const TelemetrySnapshot& snap);
@@ -47,10 +50,14 @@ class TrackView3D : public QOpenGLWidget, protected QOpenGLFunctions_2_1 {
   void drawAxes();
   void drawTrail(const QVector<TrackSample>& trail, float r, float g, float b, float width);
   void drawMarker(const QVector3D& display_pos, float r, float g, float b, float size);
+  void drawShahedModel(const QVector3D& pos_ned);
   void drawLos();
   void updateAutoFrame();
   QPointF projectToScreen(const QVector3D& display_pos, const QMatrix4x4& mvp) const;
   void drawCoordOverlays(const QMatrix4x4& mvp);
+  void ensureShahedMesh();
+  QQuaternion targetOrientation() const;
+  QMatrix4x4 bodyToDisplayRotation(const QQuaternion& attitude_wxyz) const;
 
   TelemetrySnapshot snap_;
   bool follow_missile_{true};
@@ -70,4 +77,8 @@ class TrackView3D : public QOpenGLWidget, protected QOpenGLFunctions_2_1 {
   float terrain_base_up_m_{0.0F};
   std::uint32_t terrain_seed_{1U};
   quint64 last_step_count_{0};
+
+  ObjMesh shahed_mesh_;
+  bool shahed_mesh_load_attempted_{false};
+  bool shahed_mesh_ok_{false};
 };

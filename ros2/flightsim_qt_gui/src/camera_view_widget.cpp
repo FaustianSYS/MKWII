@@ -1,9 +1,19 @@
 #include "camera_view_widget.hpp"
 
+#include "shahed_model.hpp"
+
+#include <QLinearGradient>
 #include <QPainter>
 #include <QPaintEvent>
 #include <QtMath>
+#include <algorithm>
 #include <cmath>
+
+namespace {
+
+constexpr int kSeekerTriangleStride = 8;
+
+}  // namespace
 
 CameraViewWidget::CameraViewWidget(Mode mode, QWidget* parent) : QWidget(parent), mode_(mode) {
   setFixedSize(260, 180);
@@ -15,6 +25,14 @@ void CameraViewWidget::setSnapshot(const TelemetrySnapshot& snap) {
   update();
 }
 
+void CameraViewWidget::ensureShahedMesh() {
+  if (shahed_mesh_load_attempted_) {
+    return;
+  }
+  shahed_mesh_load_attempted_ = true;
+  shahed_mesh_ok_ = shahed::prepareMesh(shahed_mesh_);
+}
+
 QVector3D CameraViewWidget::safeForward(const QVector3D& vel, const QVector3D& fallback) const {
   if (vel.lengthSquared() > 1.0F) {
     return vel.normalized();
@@ -23,6 +41,14 @@ QVector3D CameraViewWidget::safeForward(const QVector3D& vel, const QVector3D& f
     return fallback.normalized();
   }
   return QVector3D(1.0F, 0.0F, 0.0F);
+}
+
+QVector3D CameraViewWidget::seekerForward() const {
+  if (snap_.has_missile_attitude) {
+    return snap_.missile_attitude.rotatedVector(QVector3D(1.0F, 0.0F, 0.0F)).normalized();
+  }
+  return safeForward(snap_.missile_vel_ned,
+                    snap_.has_target ? (snap_.target_pos_ned - snap_.missile_pos_ned) : QVector3D(1, 0, 0));
 }
 
 bool CameraViewWidget::projectPoint(const QVector3D& eye, const QVector3D& forward, const QVector3D& world_up,
@@ -50,6 +76,68 @@ bool CameraViewWidget::projectPoint(const QVector3D& eye, const QVector3D& forwa
   return true;
 }
 
+void CameraViewWidget::drawShahedSeeker(QPainter& painter, const QRectF& viewport, const QVector3D& eye,
+                                        const QVector3D& forward, const QVector3D& world_up, float fov_rad,
+                                        const std::function<QPointF(const QPointF&)>& to_pixel) {
+  if (!snap_.has_target || !shahed_mesh_ok_) {
+    return;
+  }
+
+  const QQuaternion attitude = shahed::targetOrientation(snap_);
+  const QVector3D target_pos = snap_.target_pos_ned;
+  const QVector3D light_dir = (forward + QVector3D(0.0F, 0.0F, -0.35F)).normalized();
+  const QVector3D f_hat = forward.normalized();
+
+  QVector<ProjectedTriangle> projected;
+  projected.reserve(shahed_mesh_.triangles().size() / kSeekerTriangleStride + 16);
+
+  const auto& vertices = shahed_mesh_.vertices();
+  for (int i = 0; i < shahed_mesh_.triangles().size(); i += kSeekerTriangleStride) {
+    const auto& tri = shahed_mesh_.triangles()[i];
+    const QVector3D& a_body = vertices[tri.i0];
+    const QVector3D& b_body = vertices[tri.i1];
+    const QVector3D& c_body = vertices[tri.i2];
+
+    const QVector3D a_ned = target_pos + (attitude.isNull() ? a_body : attitude.rotatedVector(a_body));
+    const QVector3D b_ned = target_pos + (attitude.isNull() ? b_body : attitude.rotatedVector(b_body));
+    const QVector3D c_ned = target_pos + (attitude.isNull() ? c_body : attitude.rotatedVector(c_body));
+
+    const QVector3D normal_ned =
+        QVector3D::crossProduct(b_ned - a_ned, c_ned - a_ned).normalized();
+    const float shade = std::clamp(0.30F + 0.70F * std::max(0.0F, QVector3D::dotProduct(normal_ned, light_dir)),
+                                   0.15F, 1.0F);
+
+    QPolygonF polygon;
+    float depth_sum = 0.0F;
+    bool visible = true;
+    for (const QVector3D& point_ned : {a_ned, b_ned, c_ned}) {
+      QPointF uv;
+      if (!projectPoint(eye, forward, world_up, fov_rad, point_ned, &uv)) {
+        visible = false;
+        break;
+      }
+      depth_sum += QVector3D::dotProduct(point_ned - eye, f_hat);
+      polygon << to_pixel(uv);
+    }
+    if (!visible || depth_sum < 6.0F) {
+      continue;
+    }
+
+    const int base = static_cast<int>(190 * shade);
+    projected.push_back(
+        ProjectedTriangle{depth_sum / 3.0F, polygon, QColor(base + 10, base / 2 + 40, 20, 235)});
+  }
+
+  std::sort(projected.begin(), projected.end(),
+            [](const ProjectedTriangle& lhs, const ProjectedTriangle& rhs) { return lhs.depth > rhs.depth; });
+
+  painter.setPen(Qt::NoPen);
+  for (const auto& tri : projected) {
+    painter.setBrush(tri.fill);
+    painter.drawPolygon(tri.polygon);
+  }
+}
+
 void CameraViewWidget::paintEvent(QPaintEvent* /*event*/) {
   QPainter p(this);
   p.setRenderHint(QPainter::Antialiasing, true);
@@ -63,7 +151,6 @@ void CameraViewWidget::paintEvent(QPaintEvent* /*event*/) {
   p.setPen(QPen(accent.darker(140), 1.5));
   p.drawRect(frame);
 
-  // Title bar
   p.fillRect(QRectF(frame.left(), frame.top(), frame.width(), 22), QColor(0, 0, 0, 140));
   p.setPen(accent);
   QFont title = p.font();
@@ -77,15 +164,13 @@ void CameraViewWidget::paintEvent(QPaintEvent* /*event*/) {
   p.setClipRect(viewport);
   p.fillRect(viewport, seeker ? QColor(4, 18, 14) : QColor(8, 16, 28));
 
-  // Display uses Up = -Down; cameras work in NED with world_up = -Down axis in display? 
-  // Use NED with world "up" as -Z (negative down).
   const QVector3D world_up(0.0F, 0.0F, -1.0F);
 
   QVector3D eye;
   QVector3D forward;
   float fov = 0.70F;
-  QVector3D primary;    // main tracked object
-  QVector3D secondary;  // optional other contact
+  QVector3D primary;
+  QVector3D secondary;
   bool have_primary = false;
   bool have_secondary = false;
   QColor primary_color;
@@ -99,7 +184,7 @@ void CameraViewWidget::paintEvent(QPaintEvent* /*event*/) {
       return;
     }
     eye = snap_.missile_pos_ned;
-    forward = safeForward(snap_.missile_vel_ned, snap_.has_target ? (snap_.target_pos_ned - eye) : QVector3D(1, 0, 0));
+    forward = seekerForward();
     fov = snap_.seeker_fov_rad > 0.05F ? snap_.seeker_fov_rad : 0.52F;
     if (snap_.has_target) {
       primary = snap_.target_pos_ned;
@@ -121,17 +206,15 @@ void CameraViewWidget::paintEvent(QPaintEvent* /*event*/) {
       have_primary = true;
       primary_color = QColor(64, 220, 240);
     }
-    // Also paint a soft ground contact cue using vertical down from eye.
     secondary = QVector3D(eye.x() + forward.x() * 80.0F, eye.y() + forward.y() * 80.0F, 0.0F);
     have_secondary = true;
     secondary_color = QColor(80, 120, 90);
   }
 
-  // Horizon band from camera pitch
   {
     const float pitch = std::asin(std::clamp(-forward.z(), -1.0F, 1.0F));
     const float half = std::tan(0.5F * fov);
-    const float v = (-std::tan(pitch)) / half;  // approx horizon in NDC-ish
+    const float v = (-std::tan(pitch)) / half;
     const float cy = viewport.center().y() - v * (viewport.height() * 0.5);
     QLinearGradient grad(viewport.topLeft(), viewport.bottomLeft());
     if (seeker) {
@@ -153,6 +236,11 @@ void CameraViewWidget::paintEvent(QPaintEvent* /*event*/) {
                    viewport.center().y() - uv.y() * viewport.height() * 0.5);
   };
 
+  if (seeker && snap_.has_target) {
+    ensureShahedMesh();
+    drawShahedSeeker(p, viewport, eye, forward, world_up, fov, to_pixel);
+  }
+
   if (have_secondary) {
     QPointF uv;
     if (projectPoint(eye, forward, world_up, fov, secondary, &uv) && std::abs(uv.x()) < 1.4 &&
@@ -169,16 +257,15 @@ void CameraViewWidget::paintEvent(QPaintEvent* /*event*/) {
     if (projectPoint(eye, forward, world_up, fov, primary, &uv)) {
       const bool in_fov = std::abs(uv.x()) <= 1.0 && std::abs(uv.y()) <= 1.0;
       const QPointF px = to_pixel(uv);
-      if (in_fov || (std::abs(uv.x()) < 1.6 && std::abs(uv.y()) < 1.6)) {
-        const qreal radius = seeker ? 7.0 : 6.0;
+      if (!seeker && (in_fov || (std::abs(uv.x()) < 1.6 && std::abs(uv.y()) < 1.6))) {
         p.setPen(QPen(primary_color, 1.5));
         p.setBrush(QColor(primary_color.red(), primary_color.green(), primary_color.blue(), in_fov ? 210 : 90));
-        p.drawEllipse(px, radius, radius);
-        if (seeker && snap_.seeker_locked && in_fov) {
-          p.setBrush(Qt::NoBrush);
-          p.setPen(QPen(QColor(80, 255, 140), 1.4));
-          p.drawRect(QRectF(px.x() - 14, px.y() - 14, 28, 28));
-        }
+        p.drawEllipse(px, 6.0, 6.0);
+      }
+      if (seeker && in_fov && snap_.seeker_locked) {
+        p.setBrush(Qt::NoBrush);
+        p.setPen(QPen(QColor(80, 255, 140), 1.4));
+        p.drawRect(QRectF(px.x() - 14, px.y() - 14, 28, 28));
       }
     } else if (seeker) {
       p.setPen(QColor(180, 80, 60));
@@ -186,7 +273,6 @@ void CameraViewWidget::paintEvent(QPaintEvent* /*event*/) {
     }
   }
 
-  // Optics overlays
   p.setClipping(false);
   p.setPen(QPen(accent, 1.2));
   const QPointF c = viewport.center();
